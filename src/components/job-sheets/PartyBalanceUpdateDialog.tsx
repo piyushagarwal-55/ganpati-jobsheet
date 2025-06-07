@@ -66,12 +66,12 @@ export default function PartyBalanceUpdateDialog({
 
         {!jobSheet ? (
           <div className="space-y-4">
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-              <div className="flex items-center gap-2 text-yellow-800">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <div className="flex items-center gap-2 text-blue-800">
                 <AlertCircle className="w-5 h-5" />
                 <span className="font-medium">No Job Sheet Selected</span>
               </div>
-              <p className="text-yellow-700 text-sm mt-2">
+              <p className="text-blue-700 text-sm mt-2">
                 Please select a job sheet to update the party balance.
               </p>
             </div>

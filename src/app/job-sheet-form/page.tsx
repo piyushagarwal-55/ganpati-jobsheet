@@ -168,10 +168,41 @@ export default function JobSheetForm() {
   const [newPartyBalance, setNewPartyBalance] = useState("");
   const [newPaperType, setNewPaperType] = useState({ name: "", gsm: "" });
 
+  // Storage for preserving user input
+  const [preservedValues, setPreservedValues] = useState({
+    paperType: "",
+    paperSize: "",
+    paperGSM: "",
+    mainPaperTypeId: null as number | null,
+    mainGSM: null as number | null,
+  });
+
   useEffect(() => {
     fetchParties();
     fetchPaperTypes();
   }, []);
+
+  // Auto-calculate impressions when paper_sheet or job_type changes
+  useEffect(() => {
+    if (formData.paper_sheet && formData.job_type) {
+      calculateAndSetImpressions();
+    }
+  }, [formData.paper_sheet, formData.job_type]);
+
+  const calculateAndSetImpressions = () => {
+    const paperSheets = parseFloat(formData.paper_sheet) || 0;
+    let impressions = 0;
+
+    if (formData.job_type === "single-single") {
+      // impression = single-single * paper sheet
+      impressions = paperSheets;
+    } else if (formData.job_type === "front-back") {
+      // impression = 2 * (front-back * paper sheet)
+      impressions = 2 * paperSheets;
+    }
+
+    updateFormData("imp", impressions.toString());
+  };
 
   const fetchParties = async () => {
     try {
@@ -257,9 +288,14 @@ export default function JobSheetForm() {
         const createdType = await response.json();
         await fetchPaperTypes();
 
-        // Set the newly created paper type as selected in the "Paper provided by party" section
+        // Set the newly created paper type as selected in the appropriate section
         if (paperProvidedByParty) {
           setPaperType(newPaperType.name.trim());
+        } else {
+          updateFormData(
+            "paper_type_id",
+            createdType.data?.id || createdType.id
+          );
         }
 
         setShowNewPaperTypeDialog(false);
@@ -339,6 +375,51 @@ export default function JobSheetForm() {
         updateFormData("sq_inch", (length * width).toString());
       }
     }
+  };
+
+  // Handle paper provided by party toggle with value preservation
+  const handlePaperProvidedByPartyToggle = (checked: boolean) => {
+    if (checked) {
+      // Switching to "paper provided by party" - preserve main form values
+      setPreservedValues({
+        paperType: paperType,
+        paperSize: paperSize,
+        paperGSM: paperGSM,
+        mainPaperTypeId: formData.paper_type_id,
+        mainGSM: formData.gsm,
+      });
+
+      // If we have preserved values or current main form values, use them
+      if (formData.size && !paperSize) {
+        setPaperSize(formData.size);
+      }
+      if (formData.gsm && !paperGSM) {
+        setPaperGSM(formData.gsm.toString());
+      }
+      // Try to find matching paper type name from selected paper type ID
+      if (formData.paper_type_id && !paperType) {
+        const selectedPaperType = paperTypes.find(
+          (type) => type.id === formData.paper_type_id
+        );
+        if (selectedPaperType) {
+          setPaperType(selectedPaperType.name);
+        }
+      }
+    } else {
+      // Switching back to main form - restore preserved values
+      if (preservedValues.mainPaperTypeId) {
+        updateFormData("paper_type_id", preservedValues.mainPaperTypeId);
+      }
+      if (preservedValues.mainGSM) {
+        updateFormData("gsm", preservedValues.mainGSM);
+      }
+      if (paperSize && !formData.size) {
+        updateFormData("size", paperSize);
+        handleSizeChange(paperSize);
+      }
+    }
+
+    setPaperProvidedByParty(checked);
   };
 
   const nextStep = () =>
@@ -666,10 +747,18 @@ export default function JobSheetForm() {
             id="imp"
             type="number"
             min="1"
-            placeholder="2000"
+            placeholder="Auto-calculated from paper sheets"
             value={formData.imp}
             onChange={(e) => updateFormData("imp", e.target.value)}
+            className="bg-gray-50"
           />
+          <p className="text-xs text-gray-500">
+            Auto-calculated:{" "}
+            {formData.job_type === "front-back"
+              ? "2 × Paper Sheets"
+              : "1 × Paper Sheets"}{" "}
+            | You can manually override if needed
+          </p>
         </div>
       </div>
 
@@ -738,7 +827,9 @@ export default function JobSheetForm() {
               type="checkbox"
               id="paper_provided_by_party"
               checked={paperProvidedByParty}
-              onChange={(e) => setPaperProvidedByParty(e.target.checked)}
+              onChange={(e) =>
+                handlePaperProvidedByPartyToggle(e.target.checked)
+              }
               className="rounded"
             />
             <Label htmlFor="paper_provided_by_party">

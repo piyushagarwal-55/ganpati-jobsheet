@@ -61,9 +61,9 @@ export function TopNav() {
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="container flex h-16 items-center justify-between px-4">
-        {/* Logo and Brand */}
-        <div className="flex items-center gap-6">
+      <div className="container flex h-16 items-center px-4">
+        {/* Logo and Brand - Left Side */}
+        <div className="flex items-center gap-3 flex-shrink-0">
           <Link href="/" className="flex items-center gap-3">
             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary shadow-sm">
               <Building2 className="h-5 w-5 text-primary-foreground" />
@@ -77,18 +77,20 @@ export function TopNav() {
               </span>
             </div>
           </Link>
+        </div>
 
-          {/* Desktop Navigation */}
-          <nav className="hidden md:flex items-center gap-6">
+        {/* Centered Desktop Navigation */}
+        <div className="flex-1 flex justify-center">
+          <nav className="hidden md:flex items-center gap-8">
             {navigationItems.map((item) => {
               const isActive = isActivePath(item.href);
               return (
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                  className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
                     isActive
-                      ? "bg-primary text-primary-foreground"
+                      ? "bg-primary text-primary-foreground shadow-sm"
                       : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
                   }`}
                 >
@@ -100,8 +102,8 @@ export function TopNav() {
           </nav>
         </div>
 
-        {/* Right side - User Menu */}
-        <div className="flex items-center gap-4">
+        {/* Right side - User Menu and Mobile Navigation */}
+        <div className="flex items-center gap-4 flex-shrink-0">
           {/* Mobile Navigation */}
           <Sheet open={isOpen} onOpenChange={setIsOpen}>
             <SheetTrigger asChild>
@@ -148,7 +150,7 @@ export function TopNav() {
           </Sheet>
 
           {/* User Menu */}
-          <DropdownMenu>
+          {/* <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" className="relative h-9 w-9 rounded-full">
                 <Avatar className="h-9 w-9">
@@ -181,7 +183,7 @@ export function TopNav() {
                 <span>Log out</span>
               </DropdownMenuItem>
             </DropdownMenuContent>
-          </DropdownMenu>
+          </DropdownMenu> */}
         </div>
       </div>
     </header>

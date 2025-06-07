@@ -28,12 +28,12 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <div className="flex flex-col h-screen bg-background">
+          <div className="flex flex-col h-screen bg-white">
             {/* Top Navigation */}
             <TopNav />
 
             {/* Main Content */}
-            <main className="flex-1 overflow-y-auto bg-background p-4 lg:p-6">
+            <main className="flex-1 overflow-y-auto bg-white p-4 lg:p-6">
               <div className="w-full max-w-7xl mx-auto">{children}</div>
             </main>
           </div>

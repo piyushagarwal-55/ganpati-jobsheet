@@ -5,7 +5,7 @@
 @layer base {
   :root {
     /* Light theme - content areas */
-    --background: 250 250 250; /* Very light gray for main content */
+    --background: 0 0% 100%; /* Pure white background */
     --foreground: 222 47% 11%; /* Dark text */
     --card: 0 0% 100%; /* Pure white cards */
     --card-foreground: 222 47% 11%;
@@ -93,7 +93,7 @@
     @apply border-border;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-white text-foreground;
   }
 
   /* Custom scrollbar for sidebar */

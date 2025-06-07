@@ -474,8 +474,8 @@ export default function JobSheetFormModal({
 
             {/* Balance Impact Preview */}
             {selectedParty && calculateTotal() > 0 && (
-              <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                <h4 className="font-medium text-yellow-800 mb-2">
+              <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <h4 className="font-medium text-blue-800 mb-2">
                   Balance Impact Preview
                 </h4>
                 <div className="text-sm space-y-1">
