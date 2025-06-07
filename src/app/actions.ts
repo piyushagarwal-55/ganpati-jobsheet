@@ -17,7 +17,7 @@ export const signUpAction = async (formData: FormData) => {
     return encodedRedirect(
       "error",
       "/sign-up",
-      "Email and password are required",
+      "Email and password are required"
     );
   }
 
@@ -37,12 +37,12 @@ export const signUpAction = async (formData: FormData) => {
   });
 
   // Only log in development mode
-  if (process.env.NODE_ENV === 'development') {
+  if (process.env.NODE_ENV === "development") {
     console.log("After signUp", error);
   }
 
   if (error) {
-    if (process.env.NODE_ENV === 'development') {
+    if (process.env.NODE_ENV === "development") {
       console.error(error.code + " " + error.message);
     }
     return encodedRedirect("error", "/sign-up", error.message);
@@ -71,7 +71,7 @@ export const signUpAction = async (formData: FormData) => {
   return encodedRedirect(
     "success",
     "/sign-up",
-    "Thanks for signing up! Please check your email for a verification link.",
+    "Thanks for signing up! Please check your email for a verification link."
   );
 };
 
@@ -111,7 +111,7 @@ export const forgotPasswordAction = async (formData: FormData) => {
     return encodedRedirect(
       "error",
       "/forgot-password",
-      "Could not reset password",
+      "Could not reset password"
     );
   }
 
@@ -122,7 +122,7 @@ export const forgotPasswordAction = async (formData: FormData) => {
   return encodedRedirect(
     "success",
     "/forgot-password",
-    "Check your email for a link to reset your password.",
+    "Check your email for a link to reset your password."
   );
 };
 
@@ -136,7 +136,7 @@ export const resetPasswordAction = async (formData: FormData) => {
     encodedRedirect(
       "error",
       "/protected/reset-password",
-      "Password and confirm password are required",
+      "Password and confirm password are required"
     );
   }
 
@@ -144,7 +144,7 @@ export const resetPasswordAction = async (formData: FormData) => {
     encodedRedirect(
       "error",
       "/dashboard/reset-password",
-      "Passwords do not match",
+      "Passwords do not match"
     );
   }
 
@@ -156,7 +156,7 @@ export const resetPasswordAction = async (formData: FormData) => {
     encodedRedirect(
       "error",
       "/dashboard/reset-password",
-      "Password update failed",
+      "Password update failed"
     );
   }
 
@@ -172,18 +172,27 @@ export const signOutAction = async () => {
 // ========== ADMIN AUTH ACTIONS ==========
 export const adminAuthAction = async (formData: FormData) => {
   const passcode = formData.get("passcode")?.toString();
-  
+
   // Use environment variable for admin passcode
   const adminPasscode = process.env.NEXT_PUBLIC_ADMIN_JOBSHEET_PASSWORD;
-  
-  console.log("Admin environment variable:", process.env.NEXT_PUBLIC_ADMIN_JOBSHEET_PASSWORD);
+
+  console.log(
+    "Admin environment variable:",
+    process.env.NEXT_PUBLIC_ADMIN_JOBSHEET_PASSWORD
+  );
   console.log("Admin passcode:", adminPasscode);
   console.log("Entered passcode:", passcode);
   console.log("Match:", passcode === adminPasscode);
-  
+
   if (!adminPasscode) {
-    console.error("SECURITY ERROR: Admin passcode not configured in environment variables");
-    return encodedRedirect("error", "/admin/job-sheet-form", "Admin authentication not configured");
+    console.error(
+      "SECURITY ERROR: Admin passcode not configured in environment variables"
+    );
+    return encodedRedirect(
+      "error",
+      "/admin/job-sheet-form",
+      "Admin authentication not configured"
+    );
   }
 
   if (passcode === adminPasscode) {
@@ -197,7 +206,11 @@ export const adminAuthAction = async (formData: FormData) => {
     });
     return redirect("/admin/job-sheet-form");
   } else {
-    return encodedRedirect("error", "/admin/job-sheet-form", "Invalid passcode");
+    return encodedRedirect(
+      "error",
+      "/admin/job-sheet-form",
+      "Invalid passcode"
+    );
   }
 };
 
@@ -212,15 +225,15 @@ export const adminLogoutAction = async () => {
 export const submitQuotationAction = async (formData: any) => {
   console.log("=== submitQuotationAction called ===");
   console.log("Received formData:", JSON.stringify(formData, null, 2));
-  
+
   const supabase = await createClient();
 
   try {
     // Handle both FormData and object format
     const getValue = (key: string) => {
-      if (formData && typeof formData.get === 'function') {
+      if (formData && typeof formData.get === "function") {
         return formData.get(key)?.toString();
-      } else if (formData && typeof formData === 'object') {
+      } else if (formData && typeof formData === "object") {
         return formData[key];
       }
       return null;
@@ -229,7 +242,7 @@ export const submitQuotationAction = async (formData: any) => {
     // Helper function to handle empty strings and convert to null
     const getNullableValue = (key: string) => {
       const value = getValue(key);
-      return value && value.trim() !== '' && value !== 'none' ? value : null;
+      return value && value.trim() !== "" && value !== "none" ? value : null;
     };
 
     const quotationData = {
@@ -246,50 +259,56 @@ export const submitQuotationAction = async (formData: any) => {
       pages: parseInt(getValue("pages") || "1"),
       color_type: getValue("colorType") || "",
       // Handle finishing options - convert "none" to null
-      binding_type: getValue("bindingType") === "none" ? null : getValue("bindingType"),
-      lamination: getValue("lamination") === "none" ? null : getValue("lamination"),
+      binding_type:
+        getValue("bindingType") === "none" ? null : getValue("bindingType"),
+      lamination:
+        getValue("lamination") === "none" ? null : getValue("lamination"),
       folding: getValue("folding") === "none" ? null : getValue("folding"),
       cutting: getValue("cutting") || "standard",
       status: "pending",
       priority: "normal",
     };
 
-    console.log("Processed quotation data:", JSON.stringify(quotationData, null, 2));
+    console.log(
+      "Processed quotation data:",
+      JSON.stringify(quotationData, null, 2)
+    );
 
     // Enhanced validation with specific field checking
     const requiredFields = [
-      { key: 'client_name', value: quotationData.client_name },
-      { key: 'client_email', value: quotationData.client_email },
-      { key: 'project_title', value: quotationData.project_title },
-      { key: 'print_type', value: quotationData.print_type },
-      { key: 'paper_type', value: quotationData.paper_type },
-      { key: 'paper_size', value: quotationData.paper_size },
-      { key: 'color_type', value: quotationData.color_type },
-      { key: 'quantity', value: quotationData.quantity }
+      { key: "client_name", value: quotationData.client_name },
+      { key: "client_email", value: quotationData.client_email },
+      { key: "project_title", value: quotationData.project_title },
+      { key: "print_type", value: quotationData.print_type },
+      { key: "paper_type", value: quotationData.paper_type },
+      { key: "paper_size", value: quotationData.paper_size },
+      { key: "color_type", value: quotationData.color_type },
+      { key: "quantity", value: quotationData.quantity },
     ];
 
     console.log("Checking required fields:", requiredFields);
 
-    const missingFields = requiredFields.filter(field => 
-      !field.value || 
-      (typeof field.value === 'string' && field.value.trim() === '') ||
-      (typeof field.value === 'number' && field.value <= 0)
+    const missingFields = requiredFields.filter(
+      (field) =>
+        !field.value ||
+        (typeof field.value === "string" && field.value.trim() === "") ||
+        (typeof field.value === "number" && field.value <= 0)
     );
 
     if (missingFields.length > 0) {
       console.error("Missing required fields:", missingFields);
-      return { 
-        success: false, 
-        error: `Missing required fields: ${missingFields.map(f => f.key).join(', ')}` 
+      return {
+        success: false,
+        error: `Missing required fields: ${missingFields.map((f) => f.key).join(", ")}`,
       };
     }
 
     // Validate email format
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(quotationData.client_email)) {
-      return { 
-        success: false, 
-        error: "Invalid email format" 
+      return {
+        success: false,
+        error: "Invalid email format",
       };
     }
 
@@ -307,20 +326,23 @@ export const submitQuotationAction = async (formData: any) => {
     }
 
     console.log("Quotation submitted successfully:", data);
-    return { success: true, data, message: "Quotation submitted successfully!" };
-
+    return {
+      success: true,
+      data,
+      message: "Quotation submitted successfully!",
+    };
   } catch (err: any) {
     console.error("Exception in submitQuotationAction:", err);
-    return { 
-      success: false, 
-      error: err.message || "Unknown error occurred" 
+    return {
+      success: false,
+      error: err.message || "Unknown error occurred",
     };
   }
 };
 
 export const updateQuotationStatusAction = async (
   quotationId: string,
-  status: string,
+  status: string
 ) => {
   const supabase = await createClient();
 
@@ -363,7 +385,7 @@ export const updateQuotationStatusAction = async (
 
 export const addQuotationNoteAction = async (
   quotationId: string,
-  note: string,
+  note: string
 ) => {
   const supabase = await createClient();
 
@@ -397,7 +419,7 @@ export const addQuotationNoteAction = async (
 
 export const updateQuotationPriceAction = async (
   quotationId: string,
-  finalPrice: number,
+  finalPrice: number
 ) => {
   const supabase = await createClient();
 
@@ -406,9 +428,9 @@ export const updateQuotationPriceAction = async (
   try {
     const { data, error } = await supabase
       .from("quotation_requests")
-      .update({ 
+      .update({
         final_price: finalPrice,
-        updated_at: new Date().toISOString() 
+        updated_at: new Date().toISOString(),
       })
       .eq("id", quotationId)
       .select()
@@ -517,7 +539,9 @@ export const generateInvoiceAction = async (quotationId: string) => {
         due_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
       });
     } catch (invoiceError) {
-      console.warn("Invoices table might not exist, continuing with quotation update only");
+      console.warn(
+        "Invoices table might not exist, continuing with quotation update only"
+      );
     }
 
     // Update quotation with invoice details
@@ -574,7 +598,9 @@ export const downloadInvoiceAction = async (quotationId: string) => {
         invoice = invoiceData;
       }
     } catch {
-      console.warn("Invoice details not found in invoices table, using quotation data");
+      console.warn(
+        "Invoice details not found in invoices table, using quotation data"
+      );
     }
 
     return {
@@ -583,7 +609,6 @@ export const downloadInvoiceAction = async (quotationId: string) => {
       invoice: invoice || null,
       downloadUrl: `/api/invoice/${quotationId}/download`,
     };
-
   } catch (error: any) {
     console.error("Error in downloadInvoiceAction:", error);
     return { success: false, error: error.message || "Internal server error" };
@@ -614,7 +639,6 @@ interface JobSheetData {
   paper_size?: string | null; // Add this
   paper_gsm?: number | null; // Add this
 }
-
 
 export const submitJobSheetAction = async (formData: JobSheetData) => {
   try {
@@ -647,39 +671,46 @@ export const submitJobSheetAction = async (formData: JobSheetData) => {
       paper_gsm: formData.paper_gsm || null, // Add this
     };
 
-    console.log("Processed data for database:", JSON.stringify(jobSheetData, null, 2));
+    console.log(
+      "Processed data for database:",
+      JSON.stringify(jobSheetData, null, 2)
+    );
 
     // Enhanced validation
     const requiredFields = [
-      { key: 'job_date', value: jobSheetData.job_date },
-      { key: 'party_name', value: jobSheetData.party_name },
-      { key: 'description', value: jobSheetData.description },
-      { key: 'plate', value: jobSheetData.plate },
-      { key: 'size', value: jobSheetData.size },
-      { key: 'sq_inch', value: jobSheetData.sq_inch },
-      { key: 'paper_sheet', value: jobSheetData.paper_sheet },
-      { key: 'imp', value: jobSheetData.imp },
-      { key: 'rate', value: jobSheetData.rate },
-      { key: 'printing', value: jobSheetData.printing },
+      { key: "job_date", value: jobSheetData.job_date },
+      { key: "party_name", value: jobSheetData.party_name },
+      { key: "description", value: jobSheetData.description },
+      { key: "plate", value: jobSheetData.plate },
+      { key: "size", value: jobSheetData.size },
+      { key: "sq_inch", value: jobSheetData.sq_inch },
+      { key: "paper_sheet", value: jobSheetData.paper_sheet },
+      { key: "imp", value: jobSheetData.imp },
+      { key: "rate", value: jobSheetData.rate },
+      { key: "printing", value: jobSheetData.printing },
     ];
 
-    const missingFields = requiredFields.filter(field =>
-      field.value === null ||
-      field.value === undefined ||
-      (typeof field.value === 'string' && field.value.trim() === '') ||
-      (typeof field.value === 'number' && isNaN(field.value))
+    const missingFields = requiredFields.filter(
+      (field) =>
+        field.value === null ||
+        field.value === undefined ||
+        (typeof field.value === "string" && field.value.trim() === "") ||
+        (typeof field.value === "number" && isNaN(field.value))
     );
 
     if (missingFields.length > 0) {
       console.error("Missing required fields:", missingFields);
       return {
         success: false,
-        error: `Missing required fields: ${missingFields.map(f => f.key).join(', ')}`
+        error: `Missing required fields: ${missingFields.map((f) => f.key).join(", ")}`,
       };
     }
 
     // Calculate total job cost
-    const totalJobCost = (jobSheetData.printing || 0) + (jobSheetData.uv || 0) + (jobSheetData.baking || 0);
+    const totalJobCost =
+      (jobSheetData.printing || 0) +
+      (jobSheetData.uv || 0) +
+      (jobSheetData.baking || 0);
 
     // Start transaction for job sheet creation and party balance update
     const { data: insertedJobSheet, error: insertError } = await supabase
@@ -701,8 +732,10 @@ export const submitJobSheetAction = async (formData: JobSheetData) => {
     // If party_id exists and there's a job cost, update the party balance directly
     if (jobSheetData.party_id && totalJobCost > 0) {
       try {
-        console.log(`Updating party balance for party ${jobSheetData.party_id}, deducting amount: ${totalJobCost}`);
-        
+        console.log(
+          `Updating party balance for party ${jobSheetData.party_id}, deducting amount: ${totalJobCost}`
+        );
+
         // Get current party balance
         const { data: partyData, error: partyError } = await supabase
           .from("parties")
@@ -717,34 +750,40 @@ export const submitJobSheetAction = async (formData: JobSheetData) => {
           // Update party balance directly
           const { error: balanceUpdateError } = await supabase
             .from("parties")
-            .update({ 
+            .update({
               balance: newBalance,
-              updated_at: new Date().toISOString()
+              updated_at: new Date().toISOString(),
             })
             .eq("id", jobSheetData.party_id);
 
           if (balanceUpdateError) {
             console.error("Error updating party balance:", balanceUpdateError);
           } else {
-            console.log(`Party balance updated successfully. Old: ${currentBalance}, New: ${newBalance}`);
+            console.log(
+              `Party balance updated successfully. Old: ${currentBalance}, New: ${newBalance}`
+            );
           }
 
           // Try to create transaction record if the table exists and has correct schema
           try {
             const transactionData = {
-              party_id: typeof jobSheetData.party_id === 'number' ? jobSheetData.party_id : parseInt(jobSheetData.party_id as string),
-              type: 'order',
+              party_id:
+                typeof jobSheetData.party_id === "number"
+                  ? jobSheetData.party_id
+                  : parseInt(jobSheetData.party_id as string),
+              type: "order",
               amount: totalJobCost,
               description: `Job Sheet #${insertedJobSheet.id} - ${jobSheetData.description}`,
-              balance_after: newBalance
+              balance_after: newBalance,
             };
 
-            await supabase
-              .from("party_transactions")
-              .insert([transactionData]);
+            await supabase.from("party_transactions").insert([transactionData]);
             console.log("Party transaction created successfully");
           } catch (transactionError) {
-            console.warn("Could not create party transaction (table may not exist or have schema issues):", transactionError);
+            console.warn(
+              "Could not create party transaction (table may not exist or have schema issues):",
+              transactionError
+            );
             // Don't fail the job creation if transaction logging fails
           }
         } else {
@@ -761,21 +800,20 @@ export const submitJobSheetAction = async (formData: JobSheetData) => {
     return {
       success: true,
       data: insertedJobSheet,
-      message: jobSheetData.party_id ? 
-        "Job sheet created successfully and party balance updated!" :
-        "Job sheet created successfully!",
+      message: jobSheetData.party_id
+        ? "Job sheet created successfully and party balance updated!"
+        : "Job sheet created successfully!",
     };
-
   } catch (error: any) {
     console.error("=== JOB SHEET SUBMISSION ERROR ===");
     console.error("Full error:", error);
-    
+
     return {
       success: false,
       error: `Server error: ${error.message || "Unknown error occurred"}`,
     };
   }
-}
+};
 
 export const updateJobSheetAction = async (
   jobSheetId: number,
@@ -788,13 +826,24 @@ export const updateJobSheetAction = async (
   try {
     // Convert string values to appropriate types if needed
     const processedUpdates: any = {};
-    
-    Object.keys(updates).forEach(key => {
+
+    Object.keys(updates).forEach((key) => {
       const value = updates[key as keyof JobSheetData];
-      
-      if (key === 'sheet' || key === 'plate' || key === 'paper_sheet' || key === 'imp') {
+
+      if (
+        key === "sheet" ||
+        key === "plate" ||
+        key === "paper_sheet" ||
+        key === "imp"
+      ) {
         processedUpdates[key] = value ? parseInt(String(value)) : null;
-      } else if (key === 'sq_inch' || key === 'rate' || key === 'printing' || key === 'uv' || key === 'baking') {
+      } else if (
+        key === "sq_inch" ||
+        key === "rate" ||
+        key === "printing" ||
+        key === "uv" ||
+        key === "baking"
+      ) {
         processedUpdates[key] = value ? parseFloat(String(value)) : null;
       } else {
         processedUpdates[key] = value || null;
@@ -863,7 +912,7 @@ export const deleteJobSheetAction = async (jobSheetId: number) => {
 
 export const addJobSheetNoteAction = async (
   jobSheetId: number,
-  note: string,
+  note: string
 ) => {
   const supabase = await createClient();
 
@@ -915,7 +964,8 @@ export const generateJobSheetReportAction = async (jobSheetId: number) => {
     const reportNumber = `GO-JS-${jobSheetId}-${timestamp}`;
 
     // Calculate total cost if not already calculated
-    const totalCost = (jobSheet.printing || 0) + (jobSheet.uv || 0) + (jobSheet.baking || 0);
+    const totalCost =
+      (jobSheet.printing || 0) + (jobSheet.uv || 0) + (jobSheet.baking || 0);
 
     // Try to get notes if they exist
     let notes = [];
@@ -943,7 +993,6 @@ export const generateJobSheetReportAction = async (jobSheetId: number) => {
       notes,
       downloadUrl: `/api/job-sheet-report/${jobSheetId}/download`,
     };
-
   } catch (error: any) {
     console.error("Error in generateJobSheetReportAction:", error);
     return { success: false, error: error.message || "Internal server error" };
@@ -965,10 +1014,10 @@ export const addPartyAction = async (formData: {
     const supabase = await createClient();
 
     // Validate required fields
-    if (!formData.name || formData.name.trim() === '') {
+    if (!formData.name || formData.name.trim() === "") {
       return {
         success: false,
-        error: "Party name is required"
+        error: "Party name is required",
       };
     }
 
@@ -976,7 +1025,7 @@ export const addPartyAction = async (formData: {
     if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
       return {
         success: false,
-        error: "Invalid email format"
+        error: "Invalid email format",
       };
     }
 
@@ -985,7 +1034,7 @@ export const addPartyAction = async (formData: {
       phone: formData.phone?.trim() || null,
       email: formData.email?.trim() || null,
       address: formData.address?.trim() || null,
-      balance: parseFloat(formData.balance?.toString() || '0') || 0,
+      balance: parseFloat(formData.balance?.toString() || "0") || 0,
     };
 
     console.log("Processed party data:", JSON.stringify(partyData, null, 2));
@@ -1009,17 +1058,16 @@ export const addPartyAction = async (formData: {
     if (party.balance !== 0) {
       const transactionData = {
         party_id: parseInt(party.id),
-        type: party.balance > 0 ? 'payment' : 'order',
+        type: party.balance > 0 ? "payment" : "order",
         amount: Math.abs(party.balance),
-        description: party.balance > 0 
-          ? 'Initial balance - advance payment' 
-          : 'Initial balance - opening order',
-        balance_after: party.balance
+        description:
+          party.balance > 0
+            ? "Initial balance - advance payment"
+            : "Initial balance - opening order",
+        balance_after: party.balance,
       };
 
-      await supabase
-        .from('party_transactions')
-        .insert([transactionData]);
+      await supabase.from("party_transactions").insert([transactionData]);
     }
 
     console.log("Party created successfully:", party);
@@ -1030,11 +1078,10 @@ export const addPartyAction = async (formData: {
       data: party,
       message: "Party added successfully!",
     };
-
   } catch (error: any) {
     console.error("=== ADD PARTY ACTION ERROR ===");
     console.error("Full error:", error);
-    
+
     return {
       success: false,
       error: `Server error: ${error.message || "Unknown error occurred"}`,
@@ -1058,7 +1105,10 @@ export const updatePartyAction = async (
 
   try {
     // Validate required fields
-    if (updates.name !== undefined && (!updates.name || updates.name.trim() === '')) {
+    if (
+      updates.name !== undefined &&
+      (!updates.name || updates.name.trim() === "")
+    ) {
       return { success: false, error: "Party name cannot be empty" };
     }
 
@@ -1072,34 +1122,39 @@ export const updatePartyAction = async (
     };
 
     if (updates.name !== undefined) updateData.name = updates.name.trim();
-    if (updates.phone !== undefined) updateData.phone = updates.phone?.trim() || null;
-    if (updates.email !== undefined) updateData.email = updates.email?.trim() || null;
-    if (updates.address !== undefined) updateData.address = updates.address?.trim() || null;
+    if (updates.phone !== undefined)
+      updateData.phone = updates.phone?.trim() || null;
+    if (updates.email !== undefined)
+      updateData.email = updates.email?.trim() || null;
+    if (updates.address !== undefined)
+      updateData.address = updates.address?.trim() || null;
 
     // If balance is being updated, handle it separately with a transaction
     if (updates.balance !== undefined) {
       // Get current balance
       const { data: currentParty } = await supabase
-        .from('parties')
-        .select('balance')
-        .eq('id', partyId)
+        .from("parties")
+        .select("balance")
+        .eq("id", partyId)
         .single();
 
-      if (currentParty && parseFloat(updates.balance.toString()) !== currentParty.balance) {
-        const balanceChange = parseFloat(updates.balance.toString()) - currentParty.balance;
-        
+      if (
+        currentParty &&
+        parseFloat(updates.balance.toString()) !== currentParty.balance
+      ) {
+        const balanceChange =
+          parseFloat(updates.balance.toString()) - currentParty.balance;
+
         // Create adjustment transaction
         const transactionData = {
           party_id: partyId,
-          type: 'adjustment',
+          type: "adjustment",
           amount: Math.abs(balanceChange),
-          description: `Balance adjustment: ${balanceChange > 0 ? '+' : ''}${balanceChange.toFixed(2)}`,
-          balance_after: parseFloat(updates.balance.toString())
+          description: `Balance adjustment: ${balanceChange > 0 ? "+" : ""}${balanceChange.toFixed(2)}`,
+          balance_after: parseFloat(updates.balance.toString()),
         };
 
-        await supabase
-          .from('party_transactions')
-          .insert([transactionData]);
+        await supabase.from("party_transactions").insert([transactionData]);
       }
     }
 
@@ -1131,28 +1186,29 @@ export const deletePartyAction = async (partyId: number) => {
   try {
     // Check if party has associated records
     const { data: transactions } = await supabase
-      .from('party_transactions')
-      .select('id')
-      .eq('party_id', partyId)
+      .from("party_transactions")
+      .select("id")
+      .eq("party_id", partyId)
       .limit(1);
 
     const { data: orders } = await supabase
-      .from('party_orders')
-      .select('id')
-      .eq('party_id', partyId)
+      .from("party_orders")
+      .select("id")
+      .eq("party_id", partyId)
       .limit(1);
 
-    if ((transactions && transactions.length > 0) || (orders && orders.length > 0)) {
-      return { 
-        success: false, 
-        error: 'Cannot delete party with existing transactions or orders. Please clear all transactions first.' 
+    if (
+      (transactions && transactions.length > 0) ||
+      (orders && orders.length > 0)
+    ) {
+      return {
+        success: false,
+        error:
+          "Cannot delete party with existing transactions or orders. Please clear all transactions first.",
       };
     }
 
-    const { error } = await supabase
-      .from("parties")
-      .delete()
-      .eq("id", partyId);
+    const { error } = await supabase.from("parties").delete().eq("id", partyId);
 
     if (error) {
       console.error("Error deleting party:", error);
@@ -1169,7 +1225,7 @@ export const deletePartyAction = async (partyId: number) => {
 
 export const addPartyTransactionAction = async (
   partyId: number,
-  type: 'payment' | 'order' | 'adjustment',
+  type: "payment" | "order" | "adjustment",
   amount: number,
   description?: string
 ) => {
@@ -1180,10 +1236,13 @@ export const addPartyTransactionAction = async (
   try {
     // Validate inputs
     if (!partyId || !type || !amount) {
-      return { success: false, error: "Party ID, type, and amount are required" };
+      return {
+        success: false,
+        error: "Party ID, type, and amount are required",
+      };
     }
 
-    if (!['payment', 'order', 'adjustment'].includes(type)) {
+    if (!["payment", "order", "adjustment"].includes(type)) {
       return { success: false, error: "Invalid transaction type" };
     }
 
@@ -1193,9 +1252,9 @@ export const addPartyTransactionAction = async (
 
     // Get current party balance
     const { data: party, error: partyError } = await supabase
-      .from('parties')
-      .select('balance, name')
-      .eq('id', partyId)
+      .from("parties")
+      .select("balance, name")
+      .eq("id", partyId)
       .single();
 
     if (partyError || !party) {
@@ -1205,13 +1264,13 @@ export const addPartyTransactionAction = async (
     // Calculate new balance based on transaction type
     let balanceChange = 0;
     switch (type) {
-      case 'payment':
+      case "payment":
         balanceChange = amount; // Payment increases balance
         break;
-      case 'order':
+      case "order":
         balanceChange = -amount; // Order decreases balance
         break;
-      case 'adjustment':
+      case "adjustment":
         balanceChange = amount; // Adjustment can be positive or negative
         break;
     }
@@ -1223,17 +1282,21 @@ export const addPartyTransactionAction = async (
       party_id: partyId,
       type,
       amount: Math.abs(amount),
-      description: description || `${type.charAt(0).toUpperCase() + type.slice(1)} - ₹${Math.abs(amount)}`,
-      balance_after: newBalance
+      description:
+        description ||
+        `${type.charAt(0).toUpperCase() + type.slice(1)} - ₹${Math.abs(amount)}`,
+      balance_after: newBalance,
     };
 
     const { data: transaction, error } = await supabase
-      .from('party_transactions')
+      .from("party_transactions")
       .insert([transactionData])
-      .select(`
+      .select(
+        `
         *,
         party:parties(name)
-      `)
+      `
+      )
       .single();
 
     if (error) {
@@ -1242,7 +1305,11 @@ export const addPartyTransactionAction = async (
     }
 
     console.log("Transaction created successfully:", transaction);
-    return { success: true, data: transaction, message: `${type.charAt(0).toUpperCase() + type.slice(1)} recorded successfully!` };
+    return {
+      success: true,
+      data: transaction,
+      message: `${type.charAt(0).toUpperCase() + type.slice(1)} recorded successfully!`,
+    };
   } catch (error: any) {
     console.error("Exception in addPartyTransactionAction:", error);
     return { success: false, error: error.message || "Unknown error occurred" };
@@ -1254,8 +1321,9 @@ export const getPartiesAction = async () => {
 
   try {
     const { data: parties, error } = await supabase
-      .from('parties')
-      .select(`
+      .from("parties")
+      .select(
+        `
         *,
         party_transactions:party_transactions(
           id, type, amount, description, created_at
@@ -1263,17 +1331,18 @@ export const getPartiesAction = async () => {
         party_orders:party_orders(
           id, order_amount, description, status, created_at
         )
-      `)
-      .order('created_at', { ascending: false });
+      `
+      )
+      .order("created_at", { ascending: false });
 
     if (error) {
-      console.error('Error fetching parties:', error);
+      console.error("Error fetching parties:", error);
       return { success: false, error: error.message };
     }
 
     return { success: true, data: parties || [] };
   } catch (error: any) {
-    console.error('Exception in getPartiesAction:', error);
+    console.error("Exception in getPartiesAction:", error);
     return { success: false, error: error.message || "Unknown error occurred" };
   }
 };
@@ -1283,27 +1352,30 @@ export const getPartyTransactionsAction = async (partyId?: number) => {
 
   try {
     let query = supabase
-      .from('party_transactions')
-      .select(`
+      .from("party_transactions")
+      .select(
+        `
         *,
         party:parties(name)
-      `)
-      .order('created_at', { ascending: false });
+      `
+      )
+      .or("is_deleted.is.null,is_deleted.eq.false")
+      .order("created_at", { ascending: false });
 
     if (partyId) {
-      query = query.eq('party_id', partyId);
+      query = query.eq("party_id", partyId);
     }
 
     const { data: transactions, error } = await query;
 
     if (error) {
-      console.error('Error fetching transactions:', error);
+      console.error("Error fetching transactions:", error);
       return { success: false, error: error.message };
     }
 
     return { success: true, data: transactions || [] };
   } catch (error: any) {
-    console.error('Exception in getPartyTransactionsAction:', error);
+    console.error("Exception in getPartyTransactionsAction:", error);
     return { success: false, error: error.message || "Unknown error occurred" };
   }
 };
@@ -1317,23 +1389,24 @@ export const checkPartyDependenciesAction = async (partyId: number) => {
 
     // Check job sheets that reference this party
     const { data: jobSheets, error: jobSheetsError } = await supabase
-      .from('job_sheets')
-      .select('id, description, job_date, printing, uv, baking, party_name')
-      .eq('party_id', partyId);
+      .from("job_sheets")
+      .select("id, description, job_date, printing, uv, baking, party_name")
+      .eq("party_id", partyId);
 
     if (jobSheetsError) {
-      console.error('Error checking job sheets:', jobSheetsError);
+      console.error("Error checking job sheets:", jobSheetsError);
       return { success: false, error: jobSheetsError.message };
     }
 
-    // Check party transactions
+    // Check party transactions (exclude soft-deleted)
     const { data: transactions, error: transactionsError } = await supabase
-      .from('party_transactions')
-      .select('id, type, amount, description, created_at')
-      .eq('party_id', partyId);
+      .from("party_transactions")
+      .select("id, type, amount, description, created_at")
+      .eq("party_id", partyId)
+      .or("is_deleted.is.null,is_deleted.eq.false");
 
     if (transactionsError) {
-      console.error('Error checking transactions:', transactionsError);
+      console.error("Error checking transactions:", transactionsError);
       return { success: false, error: transactionsError.message };
     }
 
@@ -1341,21 +1414,21 @@ export const checkPartyDependenciesAction = async (partyId: number) => {
     let orders = [];
     try {
       const { data: ordersData, error: ordersError } = await supabase
-        .from('party_orders')
-        .select('id, order_amount, description, status, created_at')
-        .eq('party_id', partyId);
+        .from("party_orders")
+        .select("id, order_amount, description, status, created_at")
+        .eq("party_id", partyId);
 
       if (!ordersError) {
         orders = ordersData || [];
       }
     } catch (err) {
-      console.warn('Party orders table might not exist');
+      console.warn("Party orders table might not exist");
     }
 
     const dependencies = {
       jobSheets: jobSheets || [],
       transactions: transactions || [],
-      orders: orders
+      orders: orders,
     };
 
     const hasJobSheets = dependencies.jobSheets.length > 0;
@@ -1366,19 +1439,19 @@ export const checkPartyDependenciesAction = async (partyId: number) => {
       success: true,
       data: dependencies,
       canDelete: !hasJobSheets && !hasTransactions && !hasOrders,
-      message: hasJobSheets || hasTransactions || hasOrders 
-        ? 'This party has associated records that must be handled before deletion'
-        : 'This party can be safely deleted'
+      message:
+        hasJobSheets || hasTransactions || hasOrders
+          ? "This party has associated records that must be handled before deletion"
+          : "This party can be safely deleted",
     };
-
   } catch (error: any) {
-    console.error('Exception in checkPartyDependenciesAction:', error);
+    console.error("Exception in checkPartyDependenciesAction:", error);
     return { success: false, error: error.message || "Unknown error occurred" };
   }
 };
 
 export const deletePartyWithDependenciesAction = async (
-  partyId: number, 
+  partyId: number,
   options: {
     deleteJobSheets?: boolean;
     deleteTransactions?: boolean;
@@ -1388,7 +1461,10 @@ export const deletePartyWithDependenciesAction = async (
   const supabase = await createClient();
 
   try {
-    console.log(`Starting party deletion process for party ${partyId} with options:`, options);
+    console.log(
+      `Starting party deletion process for party ${partyId} with options:`,
+      options
+    );
 
     // First check what dependencies exist
     const dependencyCheck = await checkPartyDependenciesAction(partyId);
@@ -1401,13 +1477,13 @@ export const deletePartyWithDependenciesAction = async (
     // If user chose to delete job sheets, do it first
     if (options.deleteJobSheets && dependencies.jobSheets.length > 0) {
       console.log(`Deleting ${dependencies.jobSheets.length} job sheets...`);
-      
+
       for (const jobSheet of dependencies.jobSheets) {
         const deleteResult = await deleteJobSheetAction(jobSheet.id);
         if (!deleteResult.success) {
-          return { 
-            success: false, 
-            error: `Failed to delete job sheet ${jobSheet.id}: ${deleteResult.error}` 
+          return {
+            success: false,
+            error: `Failed to delete job sheet ${jobSheet.id}: ${deleteResult.error}`,
           };
         }
       }
@@ -1415,29 +1491,37 @@ export const deletePartyWithDependenciesAction = async (
 
     // If user chose to delete transactions, do it next
     if (options.deleteTransactions && dependencies.transactions.length > 0) {
-      console.log(`Deleting ${dependencies.transactions.length} transactions...`);
-      
+      console.log(
+        `Deleting ${dependencies.transactions.length} transactions...`
+      );
+
       const { error: transactionsError } = await supabase
-        .from('party_transactions')
+        .from("party_transactions")
         .delete()
-        .eq('party_id', partyId);
+        .eq("party_id", partyId);
 
       if (transactionsError) {
-        return { success: false, error: `Failed to delete transactions: ${transactionsError.message}` };
+        return {
+          success: false,
+          error: `Failed to delete transactions: ${transactionsError.message}`,
+        };
       }
     }
 
     // If user chose to delete orders, do it next
     if (options.deleteOrders && dependencies.orders.length > 0) {
       console.log(`Deleting ${dependencies.orders.length} orders...`);
-      
+
       const { error: ordersError } = await supabase
-        .from('party_orders')
+        .from("party_orders")
         .delete()
-        .eq('party_id', partyId);
+        .eq("party_id", partyId);
 
       if (ordersError) {
-        return { success: false, error: `Failed to delete orders: ${ordersError.message}` };
+        return {
+          success: false,
+          error: `Failed to delete orders: ${ordersError.message}`,
+        };
       }
     }
 
@@ -1450,56 +1534,64 @@ export const deletePartyWithDependenciesAction = async (
     if (!finalCheck.data.canDelete) {
       return {
         success: false,
-        error: 'Cannot delete party - still has dependencies that were not cleared',
-        data: finalCheck.data
+        error:
+          "Cannot delete party - still has dependencies that were not cleared",
+        data: finalCheck.data,
       };
     }
 
     // Finally delete the party
     const { error: partyError } = await supabase
-      .from('parties')
+      .from("parties")
       .delete()
-      .eq('id', partyId);
+      .eq("id", partyId);
 
     if (partyError) {
-      return { success: false, error: `Failed to delete party: ${partyError.message}` };
+      return {
+        success: false,
+        error: `Failed to delete party: ${partyError.message}`,
+      };
     }
 
     console.log(`Party ${partyId} deleted successfully with all dependencies`);
-    return { 
-      success: true, 
-      message: 'Party and all selected dependencies deleted successfully' 
+    return {
+      success: true,
+      message: "Party and all selected dependencies deleted successfully",
     };
-
   } catch (error: any) {
-    console.error('Exception in deletePartyWithDependenciesAction:', error);
+    console.error("Exception in deletePartyWithDependenciesAction:", error);
     return { success: false, error: error.message || "Unknown error occurred" };
   }
 };
 
-export const removeJobSheetPartyReferenceAction = async (jobSheetId: number) => {
+export const removeJobSheetPartyReferenceAction = async (
+  jobSheetId: number
+) => {
   const supabase = await createClient();
 
   try {
     console.log(`Removing party reference from job sheet ${jobSheetId}`);
 
     const { data, error } = await supabase
-      .from('job_sheets')
+      .from("job_sheets")
       .update({ party_id: null })
-      .eq('id', jobSheetId)
+      .eq("id", jobSheetId)
       .select()
       .single();
 
     if (error) {
-      console.error('Error removing party reference:', error);
+      console.error("Error removing party reference:", error);
       return { success: false, error: error.message };
     }
 
     console.log(`Party reference removed from job sheet ${jobSheetId}`);
-    return { success: true, data, message: 'Party reference removed from job sheet' };
-
+    return {
+      success: true,
+      data,
+      message: "Party reference removed from job sheet",
+    };
   } catch (error: any) {
-    console.error('Exception in removeJobSheetPartyReferenceAction:', error);
+    console.error("Exception in removeJobSheetPartyReferenceAction:", error);
     return { success: false, error: error.message || "Unknown error occurred" };
   }
 };
