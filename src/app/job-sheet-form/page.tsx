@@ -855,7 +855,7 @@ export default function JobSheetForm() {
                     <SelectValue placeholder="Select paper type" />
                   </SelectTrigger>
                   <SelectContent>
-                    {/* Original hardcoded options */}
+                    {/* Original hardcoded options (filtered to avoid duplicates) */}
                     <div className="px-2 py-1 text-xs text-gray-500 font-medium uppercase tracking-wider">
                       Standard Types
                     </div>
@@ -866,11 +866,20 @@ export default function JobSheetForm() {
                       "ART PAPER",
                       "MAIFLITO",
                       "GUMMING",
-                    ].map((type) => (
-                      <SelectItem key={type} value={type}>
-                        {type}
-                      </SelectItem>
-                    ))}
+                    ]
+                      .filter(
+                        (hardcodedType) =>
+                          !paperTypes.some(
+                            (dbType) =>
+                              dbType.name.toUpperCase() ===
+                              hardcodedType.toUpperCase()
+                          )
+                      )
+                      .map((type) => (
+                        <SelectItem key={type} value={type}>
+                          {type}
+                        </SelectItem>
+                      ))}
 
                     {/* Dynamic paper types from database */}
                     {paperTypes.length > 0 && (
