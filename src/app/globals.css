@@ -1,0 +1,148 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Light theme - content areas */
+    --background: 250 250 250; /* Very light gray for main content */
+    --foreground: 222 47% 11%; /* Dark text */
+    --card: 0 0% 100%; /* Pure white cards */
+    --card-foreground: 222 47% 11%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+
+    /* Primary - Blue theme for sidebar and accents */
+    --primary: 217 91% 60%; /* Bright blue */
+    --primary-foreground: 0 0% 98%;
+
+    /* Sidebar colors */
+    --sidebar: 222 47% 11%; /* Dark sidebar background */
+    --sidebar-foreground: 0 0% 90%; /* Light text in sidebar */
+    --sidebar-accent: 217 91% 60%; /* Blue accent for active items */
+    --sidebar-muted: 0 0% 40%; /* Muted text in sidebar */
+
+    /* Secondary colors */
+    --secondary: 0 0% 96%;
+    --secondary-foreground: 222 47% 11%;
+    --muted: 0 0% 96%;
+    --muted-foreground: 0 0% 45%;
+    --accent: 0 0% 96%;
+    --accent-foreground: 222 47% 11%;
+
+    /* Success/Green colors for positive metrics */
+    --success: 160 84% 39%; /* Professional green */
+    --success-foreground: 0 0% 98%;
+
+    /* Warning colors */
+    --warning: 38 92% 50%; /* Orange */
+    --warning-foreground: 0 0% 98%;
+
+    /* Destructive colors */
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 98%;
+
+    /* Border and input colors */
+    --border: 0 0% 89%;
+    --input: 0 0% 89%;
+    --ring: 217 91% 60%; /* Blue focus ring */
+    --radius: 0.75rem; /* Slightly more rounded */
+
+    /* Chart colors - professional palette */
+    --chart-1: 160 84% 39%; /* Green */
+    --chart-2: 217 91% 60%; /* Blue */
+    --chart-3: 271 91% 65%; /* Purple */
+    --chart-4: 38 92% 50%; /* Orange */
+    --chart-5: 346 87% 62%; /* Red */
+  }
+
+  .dark {
+    /* Dark theme - keeping the same structure */
+    --background: 222 47% 11%;
+    --foreground: 0 0% 95%;
+    --card: 222 42% 14%;
+    --card-foreground: 0 0% 95%;
+    --popover: 222 42% 14%;
+    --popover-foreground: 0 0% 95%;
+    --primary: 217 91% 60%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 222 42% 14%;
+    --secondary-foreground: 0 0% 95%;
+    --muted: 222 42% 14%;
+    --muted-foreground: 0 0% 60%;
+    --accent: 222 42% 14%;
+    --accent-foreground: 0 0% 95%;
+    --destructive: 0 62% 50%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 222 42% 14%;
+    --input: 222 42% 14%;
+    --ring: 217 91% 60%;
+    --sidebar: 222 47% 11%;
+    --sidebar-foreground: 0 0% 90%;
+    --sidebar-accent: 217 91% 60%;
+    --sidebar-muted: 0 0% 40%;
+    --success: 160 84% 39%;
+    --success-foreground: 0 0% 98%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 98%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+
+  /* Custom scrollbar for sidebar */
+  .sidebar-scroll::-webkit-scrollbar {
+    width: 4px;
+  }
+
+  .sidebar-scroll::-webkit-scrollbar-track {
+    background: hsl(var(--sidebar));
+  }
+
+  .sidebar-scroll::-webkit-scrollbar-thumb {
+    background: hsl(var(--sidebar-muted));
+    border-radius: 2px;
+  }
+
+  .sidebar-scroll::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--sidebar-accent));
+  }
+}
+
+@layer components {
+  /* Custom gradients for cards and charts */
+  .gradient-success {
+    background: linear-gradient(
+      135deg,
+      hsl(var(--success)) 0%,
+      hsl(160 84% 45%) 100%
+    );
+  }
+
+  .gradient-primary {
+    background: linear-gradient(
+      135deg,
+      hsl(var(--primary)) 0%,
+      hsl(271 91% 65%) 100%
+    );
+  }
+
+  /* Professional card shadows */
+  .card-shadow {
+    box-shadow:
+      0 1px 3px 0 rgba(0, 0, 0, 0.1),
+      0 1px 2px 0 rgba(0, 0, 0, 0.06);
+  }
+
+  .card-shadow-lg {
+    box-shadow:
+      0 10px 15px -3px rgba(0, 0, 0, 0.1),
+      0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  }
+}
