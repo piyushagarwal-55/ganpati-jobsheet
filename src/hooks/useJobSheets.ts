@@ -1,282 +1,277 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { JobSheet, JobSheetNote } from "@/types/jobsheet";
 
-export function useJobSheets() {
+export const useJobSheets = () => {
   const [jobSheets, setJobSheets] = useState<JobSheet[]>([]);
-  const [notes, setNotes] = useState<JobSheetNote[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch job sheets
-  const fetchJobSheets = async () => {
-    try {
-      setLoading(true);
-      console.log("Fetching job sheets...");
+  const fetchJobSheets = useCallback(async () => {
+    setLoading(true);
+    setError(null);
 
-      const response = await fetch("/api/job-sheets");
+    try {
+      const response = await fetch("/api/job-sheets", {
+        cache: "no-store",
+        headers: {
+          "Cache-Control": "no-cache, no-store, must-revalidate",
+          Pragma: "no-cache",
+          Expires: "0",
+        },
+      });
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error("API response not ok:", response.status, errorText);
-        throw new Error(`HTTP error! status: ${response.status}`);
+        throw new Error(`Failed to fetch job sheets: ${response.status}`);
       }
 
       const data = await response.json();
-      console.log("Job sheets response:", data);
 
-      if (data.success) {
+      if (data.success && Array.isArray(data.data)) {
+        setJobSheets(data.data);
+      } else if (data.warning) {
         setJobSheets(data.data || []);
-        setError(null);
-
-        if (data.warning) {
-          console.warn("API Warning:", data.warning);
-        }
       } else {
-        throw new Error(data.error || "Failed to fetch job sheets");
+        throw new Error("Invalid response format");
       }
     } catch (err: any) {
-      console.error("Error fetching job sheets:", err);
-      setError(err.message || "Failed to load job sheets");
-      setJobSheets([]); // Set empty array on error
+      setError(err.message || "Failed to fetch job sheets");
+      setJobSheets([]);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  // Fetch notes (with error handling for missing table)
-  const fetchNotes = async () => {
-    try {
-      console.log("Fetching job sheet notes...");
-      const response = await fetch("/api/job-sheet-notes");
+  const fetchJobSheetNotes = useCallback(
+    async (jobSheetId: number): Promise<JobSheetNote[]> => {
+      try {
+        const response = await fetch(
+          `/api/job-sheet-notes?job_sheet_id=${jobSheetId}`
+        );
 
-      if (response.ok) {
-        const data = await response.json();
-        console.log("Notes response:", data);
-
-        if (data.success) {
-          setNotes(data.data || []);
+        if (!response.ok) {
+          return [];
         }
-      } else {
-        console.warn("Notes API not available or table doesn't exist");
-        setNotes([]); // Set empty array if notes table doesn't exist
-      }
-    } catch (err) {
-      console.warn("Error fetching notes (table might not exist):", err);
-      setNotes([]); // Don't set this as an error since notes are optional
-    }
-  };
 
-  // Refetch function that refreshes both job sheets and notes
-  const refetch = async () => {
-    await fetchJobSheets();
-    await fetchNotes();
-  };
-
-  // Update job sheet
-  const updateJobSheet = async (id: number, updates: Partial<JobSheet>) => {
-    try {
-      console.log(`Updating job sheet ${id}:`, updates);
-
-      const response = await fetch(`/api/job-sheets/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(updates),
-      });
-
-      if (response.ok) {
         const data = await response.json();
-        if (data.success) {
-          // Update local state
-          setJobSheets((prev) =>
-            prev.map((
-              sheet,
-            ) => (sheet.id === id ? { ...sheet, ...updates } : sheet))
-          );
-          return { success: true };
-        }
+        return Array.isArray(data) ? data : [];
+      } catch (err) {
+        return [];
       }
+    },
+    []
+  );
 
-      const errorData = await response.json();
-      throw new Error(errorData.error || "Failed to update job sheet");
-    } catch (err: any) {
-      console.error("Error updating job sheet:", err);
-      return { success: false, error: err.message };
-    }
-  };
-
-  // Soft delete job sheet (mark as deleted with reason)
-  const softDeleteJobSheet = async (id: number, reason: string) => {
-    try {
-      console.log(`Soft deleting job sheet ${id} with reason: ${reason}`);
-
-      const response = await fetch(`/api/job-sheets/${id}/soft-delete`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          deletion_reason: reason,
-          deleted_by: "Admin", // You can make this dynamic based on current user
-        }),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success) {
-          // Update local state to mark as deleted
-          setJobSheets((prev) =>
-            prev.map((sheet) =>
-              sheet.id === id
-                ? {
-                  ...sheet,
-                  is_deleted: true,
-                  deleted_at: new Date().toISOString(),
-                  deletion_reason: reason,
-                  deleted_by: "Admin",
-                }
-                : sheet
-            )
-          );
-
-          // Force a fresh fetch to ensure data consistency
-          setTimeout(() => {
-            fetchJobSheets();
-          }, 100);
-
-          return { success: true };
-        }
-      }
-
-      const errorData = await response.json();
-      throw new Error(errorData.error || "Failed to delete job sheet");
-    } catch (err: any) {
-      console.error("Error soft deleting job sheet:", err);
-      return { success: false, error: err.message };
-    }
-  };
-
-  // Delete job sheet
-  const deleteJobSheet = async (id: number) => {
-    try {
-      console.log(`Deleting job sheet ${id}`);
-
-      const response = await fetch(`/api/job-sheets/${id}`, {
-        method: "DELETE",
-      });
-
-      if (response.ok) {
-        // Update local state immediately
-        setJobSheets((prev) => {
-          const updatedSheets = prev.filter((sheet) => sheet.id !== id);
-          console.log(
-            `Job sheet ${id} deleted. Remaining sheets:`,
-            updatedSheets.length,
-          );
-          return updatedSheets;
+  const updateJobSheet = useCallback(
+    async (id: number, updates: Partial<JobSheet>) => {
+      try {
+        const response = await fetch(`/api/job-sheets/${id}`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(updates),
         });
 
-        // Also update notes
-        setNotes((prev) => prev.filter((note) => note.job_sheet_id !== id));
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`Update failed: ${response.status} ${errorText}`);
+        }
 
-        // Force a fresh fetch to ensure data consistency
-        setTimeout(() => {
-          fetchJobSheets();
-        }, 100);
+        const updatedJobSheet = await response.json();
 
-        return { success: true };
+        setJobSheets((prev) =>
+          prev.map((job) =>
+            job.id === id ? { ...job, ...updatedJobSheet } : job
+          )
+        );
+
+        return { success: true, data: updatedJobSheet };
+      } catch (err: any) {
+        const errorMessage = err.message || "Failed to update job sheet";
+        setError(errorMessage);
+        return { success: false, error: errorMessage };
       }
+    },
+    []
+  );
 
-      const errorData = await response.json();
-      throw new Error(errorData.error || "Failed to delete job sheet");
-    } catch (err: any) {
-      console.error("Error deleting job sheet:", err);
-      return { success: false, error: err.message };
-    }
-  };
-
-  // Add note
-  const addNote = async (jobSheetId: number, noteText: string) => {
+  const softDeleteJobSheet = useCallback(async (id: number, reason: string) => {
     try {
-      console.log(`Adding note to job sheet ${jobSheetId}:`, noteText);
-
-      const response = await fetch("/api/job-sheet-notes", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+      const response = await fetch(`/api/job-sheets/${id}/soft-delete`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({
-          job_sheet_id: jobSheetId,
-          note: noteText,
-          author: "Admin",
+          deletion_reason: reason,
+          deleted_by: "User",
         }),
       });
 
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success) {
-          // Update local state
-          setNotes((prev) => [...prev, data.data]);
-          return { success: true };
-        }
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          result.error || `Soft delete failed: ${response.status}`
+        );
       }
 
-      const errorData = await response.json();
-
-      // If table doesn't exist, show a helpful message
-      if (errorData.code === "TABLE_NOT_FOUND") {
-        return {
-          success: false,
-          error:
-            "Notes feature not available. Please create the job_sheet_notes table.",
-        };
-      }
-
-      throw new Error(errorData.error || "Failed to add note");
+      // Update the job sheet in state to mark it as deleted instead of removing it
+      setJobSheets((prev) =>
+        prev.map((job) =>
+          job.id === id
+            ? {
+                ...job,
+                is_deleted: true,
+                deleted_at: new Date().toISOString(),
+                deletion_reason: reason,
+                deleted_by: "User",
+              }
+            : job
+        )
+      );
+      return { success: true };
     } catch (err: any) {
-      console.error("Error adding note:", err);
-      return { success: false, error: err.message };
+      const errorMessage = err.message || "Failed to soft delete job sheet";
+      setError(errorMessage);
+      return { success: false, error: errorMessage };
     }
-  };
+  }, []);
 
-  // Generate report
-  const generateReport = async (jobSheetId: number) => {
+  const deleteJobSheet = useCallback(
+    async (id: number) => {
+      try {
+        console.log(`[HOOK] Attempting to delete job sheet ${id}`);
+
+        const response = await fetch(`/api/job-sheets/${id}`, {
+          method: "DELETE",
+          headers: {
+            "Cache-Control": "no-cache",
+          },
+        });
+
+        console.log(`[HOOK] Delete response status: ${response.status}`);
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error(
+            `[HOOK] Delete failed: ${response.status} ${errorText}`
+          );
+          throw new Error(`Delete failed: ${response.status} ${errorText}`);
+        }
+
+        const result = await response.json();
+        console.log(`[HOOK] Delete result:`, result);
+
+        if (!result.success) {
+          throw new Error(result.error || "Delete operation failed");
+        }
+
+        // Remove from state immediately for real-time update
+        setJobSheets((prev) => {
+          const filteredSheets = prev.filter((job) => job.id !== id);
+          console.log(
+            `[HOOK] Removed job ${id} from state. Before: ${prev.length}, After: ${filteredSheets.length}`
+          );
+          return filteredSheets;
+        });
+
+        console.log(
+          `[HOOK] Successfully deleted job sheet ${id} from both server and state`
+        );
+        return { success: true };
+      } catch (err: any) {
+        const errorMessage = err.message || "Failed to delete job sheet";
+        console.error("[HOOK] Delete error:", err);
+        setError(errorMessage);
+
+        // If delete failed, ensure we refresh to get the current state
+        console.log(
+          "[HOOK] Delete failed, refreshing data to ensure consistency"
+        );
+        fetchJobSheets();
+
+        return { success: false, error: errorMessage };
+      }
+    },
+    [fetchJobSheets]
+  );
+
+  const addJobSheetNote = useCallback(
+    async (jobSheetId: number, noteText: string) => {
+      try {
+        const response = await fetch("/api/job-sheet-notes", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            job_sheet_id: jobSheetId,
+            note: noteText,
+          }),
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(
+            `Failed to add note: ${response.status} ${errorText}`
+          );
+        }
+
+        const newNote = await response.json();
+        return { success: true, data: newNote };
+      } catch (err: any) {
+        const errorMessage = err.message || "Failed to add note";
+        setError(errorMessage);
+        return { success: false, error: errorMessage };
+      }
+    },
+    []
+  );
+
+  const generateJobSheetReport = useCallback(async (jobSheetId: number) => {
     try {
-      console.log(`Generating report for job sheet ${jobSheetId}`);
-
       const response = await fetch(`/api/job-sheets/${jobSheetId}/report`, {
         method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
       });
 
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success) {
-          console.log("Report generated:", data);
-          alert(`Report ${data.reportNumber} generated successfully!`);
-          return { success: true };
-        }
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(
+          `Report generation failed: ${response.status} ${errorText}`
+        );
       }
 
-      const errorData = await response.json();
-      throw new Error(errorData.error || "Failed to generate report");
+      const data = await response.json();
+      return { success: true, data };
     } catch (err: any) {
-      console.error("Error generating report:", err);
-      return { success: false, error: err.message };
+      const errorMessage = err.message || "Failed to generate report";
+      setError(errorMessage);
+      return { success: false, error: errorMessage };
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchJobSheets();
-    fetchNotes();
-  }, []);
+  }, [fetchJobSheets]);
 
   return {
     jobSheets,
-    notes,
     loading,
     error,
+    fetchJobSheets,
+    fetchJobSheetNotes,
     updateJobSheet,
-    deleteJobSheet,
-    addNote,
-    generateReport,
-    refetch, // Make sure this is included in the return object
     softDeleteJobSheet,
+    deleteJobSheet,
+    addJobSheetNote,
+    generateJobSheetReport,
+    refetch: fetchJobSheets, // Alias for easier use
   };
-}
+};

@@ -55,6 +55,7 @@ import {
   MessageSquare,
   User,
   FileSpreadsheet,
+  RefreshCw,
 } from "lucide-react";
 import { JobSheet, JobSheetNote } from "@/types/jobsheet";
 import { Label } from "@/components/ui/label";
@@ -152,6 +153,10 @@ export default function JobSheetsTable({
     return matchesSearch && matchesDate;
   });
 
+  // For now, treat all job sheets as active until soft delete is properly implemented
+  const activeJobSheets = filteredJobSheets;
+  const deletedJobSheets: any[] = [];
+
   const formatCurrency = (amount: number | null) => {
     if (!amount) return "₹0";
     return new Intl.NumberFormat("en-IN", {
@@ -176,7 +181,9 @@ export default function JobSheetsTable({
   };
 
   const getJobSheetNotes = (jobSheetId: number) => {
-    return notes.filter((note) => note.job_sheet_id === jobSheetId);
+    return notes
+      ? notes.filter((note) => note.job_sheet_id === jobSheetId)
+      : [];
   };
 
   // Export functionality
@@ -265,23 +272,27 @@ export default function JobSheetsTable({
   };
 
   const handleDelete = async (id: number) => {
+    console.log(`[TABLE] Starting delete process for job sheet ${id}`);
     setIsLoading({ ...isLoading, [id]: true });
+
     const result = await deleteJobSheet(id);
     setIsLoading({ ...isLoading, [id]: false });
 
     if (result.success) {
-      console.log(`Job sheet ${id} successfully deleted`);
+      console.log(`[TABLE] Job sheet ${id} successfully deleted`);
 
       // Call refresh callback if provided to ensure dashboard updates
       if (onRefresh) {
+        console.log(`[TABLE] Calling onRefresh callback`);
         await onRefresh();
       }
 
       // Show success message
       alert(
-        "Job sheet deleted successfully. Dashboard stats have been updated."
+        "Job sheet deleted successfully. The item should now be removed from the table."
       );
     } else {
+      console.error(`[TABLE] Failed to delete job sheet ${id}:`, result.error);
       alert(`Failed to delete: ${result.error}`);
     }
   };
@@ -359,6 +370,16 @@ export default function JobSheetsTable({
             </CardTitle>
 
             <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+              {/* Refresh Button */}
+              <Button
+                onClick={onRefresh}
+                variant="outline"
+                className="w-full sm:w-auto border-blue-200 hover:border-blue-400 hover:bg-blue-50"
+              >
+                <RefreshCw className="w-4 h-4 mr-2" />
+                Refresh
+              </Button>
+
               {/* Export Button */}
               <Button
                 onClick={exportToCSV}
@@ -741,15 +762,7 @@ export default function JobSheetsTable({
                                   Generate Report
                                 </DropdownMenuItem>
                                 <DropdownMenuSeparator />
-                                {!sheet.is_deleted && softDeleteJobSheet && (
-                                  <DropdownMenuItem
-                                    onClick={() => setSoftDeleteId(sheet.id)}
-                                    className="text-orange-600 focus:text-orange-600"
-                                  >
-                                    <Trash2 className="w-4 h-4 mr-2" />
-                                    Mark as Deleted
-                                  </DropdownMenuItem>
-                                )}
+                                {/* Soft delete temporarily disabled until database migration is applied */}
                                 <AlertDialog>
                                   <AlertDialogTrigger asChild>
                                     <DropdownMenuItem
@@ -757,23 +770,19 @@ export default function JobSheetsTable({
                                       className="text-destructive focus:text-destructive"
                                     >
                                       <Trash2 className="w-4 h-4 mr-2" />
-                                      {sheet.is_deleted
-                                        ? "Remove Permanently"
-                                        : "Delete"}
+                                      Delete
                                     </DropdownMenuItem>
                                   </AlertDialogTrigger>
                                   <AlertDialogContent>
                                     <AlertDialogHeader>
                                       <AlertDialogTitle>
-                                        {sheet.is_deleted
-                                          ? "Permanently Delete"
-                                          : "Delete"}{" "}
-                                        Job Sheet
+                                        Delete Job Sheet
                                       </AlertDialogTitle>
                                       <AlertDialogDescription>
-                                        {sheet.is_deleted
-                                          ? `Are you sure you want to permanently delete job sheet #${sheet.id}? This will completely remove it from the database and cannot be undone.`
-                                          : `Are you sure you want to delete job sheet #${sheet.id}? This action cannot be undone and will also delete all associated notes.`}
+                                        Are you sure you want to delete job
+                                        sheet #{sheet.id}? This action cannot be
+                                        undone and will also delete all
+                                        associated notes.
                                       </AlertDialogDescription>
                                     </AlertDialogHeader>
                                     <AlertDialogFooter>
@@ -784,9 +793,7 @@ export default function JobSheetsTable({
                                         onClick={() => handleDelete(sheet.id)}
                                         className="bg-destructive hover:bg-destructive/90"
                                       >
-                                        {sheet.is_deleted
-                                          ? "Remove Permanently"
-                                          : "Delete"}
+                                        Delete
                                       </AlertDialogAction>
                                     </AlertDialogFooter>
                                   </AlertDialogContent>
@@ -806,16 +813,22 @@ export default function JobSheetsTable({
           {/* Table Footer with Summary */}
           {filteredJobSheets.length > 0 && (
             <div className="mt-4 p-4 bg-muted/20 rounded-lg border border-border/30">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
                 <div>
-                  <p className="text-muted-foreground">Total Job Sheets</p>
-                  <p className="font-semibold">{filteredJobSheets.length}</p>
+                  <p className="text-muted-foreground">Active Job Sheets</p>
+                  <p className="font-semibold">{activeJobSheets.length}</p>
                 </div>
                 <div>
-                  <p className="text-muted-foreground">Total Revenue</p>
+                  <p className="text-muted-foreground">Deleted Job Sheets</p>
+                  <p className="font-semibold text-red-600">
+                    {deletedJobSheets.length}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Active Revenue</p>
                   <p className="font-semibold text-success">
                     {formatCurrency(
-                      filteredJobSheets.reduce(
+                      activeJobSheets.reduce(
                         (sum, sheet) => sum + getTotalCost(sheet),
                         0
                       )
@@ -823,17 +836,17 @@ export default function JobSheetsTable({
                   </p>
                 </div>
                 <div>
-                  <p className="text-muted-foreground">Total Sheets</p>
+                  <p className="text-muted-foreground">Active Sheets</p>
                   <p className="font-semibold">
-                    {filteredJobSheets
+                    {activeJobSheets
                       .reduce((sum, sheet) => sum + (sheet.paper_sheet || 0), 0)
                       .toLocaleString()}
                   </p>
                 </div>
                 <div>
-                  <p className="text-muted-foreground">Total Impressions</p>
+                  <p className="text-muted-foreground">Active Impressions</p>
                   <p className="font-semibold">
-                    {filteredJobSheets
+                    {activeJobSheets
                       .reduce((sum, sheet) => sum + (sheet.imp || 0), 0)
                       .toLocaleString()}
                   </p>
