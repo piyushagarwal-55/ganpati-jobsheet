@@ -1411,7 +1411,7 @@ export const checkPartyDependenciesAction = async (partyId: number) => {
     }
 
     // Check party orders if they exist
-    let orders = [];
+    let orders: any[] = [];
     try {
       const { data: ordersData, error: ordersError } = await supabase
         .from("party_orders")
@@ -1473,6 +1473,9 @@ export const deletePartyWithDependenciesAction = async (
     }
 
     const dependencies = dependencyCheck.data;
+    if (!dependencies) {
+      return { success: false, error: "Failed to check dependencies" };
+    }
 
     // If user chose to delete job sheets, do it first
     if (options.deleteJobSheets && dependencies.jobSheets.length > 0) {
@@ -1531,7 +1534,7 @@ export const deletePartyWithDependenciesAction = async (
       return finalCheck;
     }
 
-    if (!finalCheck.data.canDelete) {
+    if (!finalCheck.canDelete) {
       return {
         success: false,
         error:
