@@ -51,7 +51,7 @@ export default function DashboardNavbar({
 
   return (
     <nav className="bg-white border-b border-gray-100 sticky top-0 z-40 backdrop-blur-sm">
-      <div className="container mx-auto px-6 py-4">
+      <div className="container mx-auto px-4 py-4 max-w-7xl">
         <div className="flex justify-between items-center">
           <div className="flex items-center gap-6">
             <div className="flex items-center gap-3">
@@ -71,7 +71,7 @@ export default function DashboardNavbar({
             <div className="relative hidden md:block">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
               <Input
-                placeholder="Search quotations..."
+                placeholder="Search job sheets..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-10 w-64 border-gray-200 bg-gray-50 focus:bg-white transition-colors"

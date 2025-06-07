@@ -13,12 +13,16 @@ import {
   JobSheetChartData,
   JobSheetNotification,
 } from "@/types/jobsheet";
+import {
+  DashboardStats as DashboardStatsType,
+  ChartData,
+  Notification,
+} from "@/types/database";
+
 // Import modular components
-import JobSheetDashboardNavbar from "./admin/JobSheetDashboardNavbar";
-import JobSheetDashboardStats from "./admin/JobSheetDashboardStats";
+import DashboardStats from "./admin/DashboardStats";
 import JobSheetsTable from "./admin/JobSheetsTable";
 import JobSheetDetailModal from "./admin/JobSheetDetailModal";
-import { Navbar } from "./navbar";
 
 export default function JobSheetAdminDashboard() {
   // Use custom hook for database operations
@@ -36,57 +40,51 @@ export default function JobSheetAdminDashboard() {
   } = useJobSheets();
 
   // State for notifications
-  const [notifications, setNotifications] = useState<JobSheetNotification[]>(
-    () => {
-      if (typeof window !== "undefined") {
-        const saved = localStorage.getItem("jobsheet-admin-notifications");
-        if (saved) {
-          return JSON.parse(saved);
-        }
+  const [notifications, setNotifications] = useState<Notification[]>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("jobsheet-reports-notifications");
+      if (saved) {
+        return JSON.parse(saved);
       }
-      return [
-        {
-          id: "1",
-          title: "New Job Sheet Created",
-          message: "A new production job sheet has been created",
-          type: "info",
-          timestamp: new Date(Date.now() - 1000 * 60 * 15).toISOString(),
-          read: false,
-        },
-        {
-          id: "2",
-          title: "Production Complete",
-          message: "Job sheet #123 production completed successfully",
-          type: "success",
-          timestamp: new Date(Date.now() - 1000 * 60 * 60).toISOString(),
-          read: false,
-        },
-      ];
     }
-  );
-
-  // Dashboard statistics state
-  const [stats, setStats] = useState<JobSheetStats>({
-    totalJobSheets: 0,
-    totalRevenue: 0,
-    avgJobValue: 0,
-    thisMonthJobs: 0,
-    lastMonthJobs: 0,
-    revenueGrowth: 0,
-    totalSheets: 0,
-    totalImpressions: 0,
+    return [
+      {
+        id: "1",
+        title: "Report Generated",
+        message: "Monthly job sheet report has been generated",
+        type: "info",
+        timestamp: new Date(Date.now() - 1000 * 60 * 15).toISOString(),
+        read: false,
+      },
+      {
+        id: "2",
+        title: "Production Analysis",
+        message: "Quarterly production analysis completed",
+        type: "success",
+        timestamp: new Date(Date.now() - 1000 * 60 * 60).toISOString(),
+        read: false,
+      },
+    ];
   });
 
-  // Chart data for analytics
-  const [chartData, setChartData] = useState<JobSheetChartData[]>([
-    // Initialize with default data to ensure charts always show something
-    { month: "Jan", jobs: 0, revenue: 0, sheets: 0 },
-    { month: "Feb", jobs: 0, revenue: 0, sheets: 0 },
-    { month: "Mar", jobs: 0, revenue: 0, sheets: 0 },
-    { month: "Apr", jobs: 0, revenue: 0, sheets: 0 },
-    { month: "May", jobs: 0, revenue: 0, sheets: 0 },
-    { month: "Jun", jobs: 0, revenue: 0, sheets: 0 },
-  ]);
+  // Dashboard statistics state using the consistent DashboardStatsType
+  const [stats, setStats] = useState<DashboardStatsType>({
+    totalJobSheets: 0,
+    totalParties: 0,
+    totalRevenue: 0,
+    avgOrderValue: 0,
+    thisMonthRevenue: 0,
+    lastMonthRevenue: 0,
+    revenueGrowth: 0,
+    totalOrders: 0,
+  });
+
+  // Additional state for parties and transactions data
+  const [parties, setParties] = useState<any[]>([]);
+  const [transactions, setTransactions] = useState<any[]>([]);
+
+  // Chart data for analytics using consistent ChartData type
+  const [chartData, setChartData] = useState<ChartData[]>([]);
 
   // UI state
   const [selectedJobSheet, setSelectedJobSheet] = useState<JobSheet | null>(
@@ -95,196 +93,149 @@ export default function JobSheetAdminDashboard() {
   const [searchTerm, setSearchTerm] = useState("");
   const [dateFilter, setDateFilter] = useState<string>("all");
 
-  // Calculate dashboard statistics from real data
+  // Fetch parties and transactions data like the main dashboard
   useEffect(() => {
-    console.log("JobSheets data changed:", {
-      count: jobSheets.length,
-      jobSheets: jobSheets.slice(0, 2), // Log first 2 for debugging
-    });
+    const fetchPartiesData = async () => {
+      try {
+        const [partiesResponse, transactionsResponse] = await Promise.all([
+          fetch("/api/parties"),
+          fetch("/api/parties/transactions"),
+        ]);
 
-    // Always calculate stats and generate chart data
-    calculateStats(jobSheets);
-    generateChartData();
-  }, [jobSheets]);
+        if (partiesResponse.ok && transactionsResponse.ok) {
+          const [partiesData, transactionsData] = await Promise.all([
+            partiesResponse.json(),
+            transactionsResponse.json(),
+          ]);
 
-  // Function to calculate statistics
-  const calculateStats = (data: JobSheet[]) => {
-    console.log("Calculating stats for job sheets:", data.length);
-
-    const now = new Date();
-    const thisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0);
-
-    // Separate active and deleted job sheets
-    const activeData = data.filter((sheet) => !sheet.is_deleted);
-    const deletedData = data.filter((sheet) => sheet.is_deleted);
-
-    const totalJobSheets = data.length;
-    const activeJobSheets = activeData.length;
-
-    // Calculate total revenue from active (non-deleted) transactions only
-    const totalRevenue = activeData.reduce((sum, sheet) => {
-      // Use correct field names and handle potential null values
-      const printing = parseFloat(sheet.printing?.toString() || "0");
-      const uv = parseFloat(sheet.uv?.toString() || "0");
-      const baking = parseFloat(sheet.baking?.toString() || "0");
-      const total = printing + uv + baking;
-
-      // Debug individual sheet calculations
-      if (total > 0) {
-        console.log(
-          `Sheet ${sheet.id} revenue: printing=${printing}, uv=${uv}, baking=${baking}, total=${total}`
-        );
+          setParties(partiesData);
+          setTransactions(transactionsData);
+        }
+      } catch (error) {
+        console.error("Error fetching parties data:", error);
       }
-
-      return sum + total;
-    }, 0);
-
-    console.log(
-      `Total revenue calculated from ${activeData.length} active job sheets (${deletedData.length} deleted): ₹${totalRevenue}`
-    );
-
-    const avgJobValue =
-      activeJobSheets > 0 ? totalRevenue / activeJobSheets : 0;
-
-    const thisMonthJobs = activeData.filter(
-      (sheet) => sheet.job_date && new Date(sheet.job_date) >= thisMonth
-    ).length;
-
-    const lastMonthJobs = activeData.filter(
-      (sheet) =>
-        sheet.job_date &&
-        new Date(sheet.job_date) >= lastMonth &&
-        new Date(sheet.job_date) <= endOfLastMonth
-    ).length;
-
-    const revenueGrowth =
-      lastMonthJobs > 0
-        ? ((thisMonthJobs - lastMonthJobs) / lastMonthJobs) * 100
-        : 0;
-
-    // Use correct field names - 'paper_sheet' and 'imp' from active transactions only
-    const totalSheets = activeData.reduce((sum, sheet) => {
-      const sheets = parseInt(sheet.paper_sheet?.toString() || "0");
-      return sum + sheets;
-    }, 0);
-
-    const totalImpressions = activeData.reduce((sum, sheet) => {
-      const impressions = parseInt(sheet.imp?.toString() || "0");
-      return sum + impressions;
-    }, 0);
-
-    const newStats = {
-      totalJobSheets: activeJobSheets, // Show only active job sheets in main stats
-      totalRevenue,
-      avgJobValue,
-      thisMonthJobs,
-      lastMonthJobs,
-      revenueGrowth,
-      totalSheets,
-      totalImpressions,
     };
 
-    console.log("Calculated stats (active only):", newStats);
-    console.log(
-      `Total transactions: ${totalJobSheets} (${activeJobSheets} active, ${deletedData.length} deleted)`
-    );
-    console.log("Previous stats for comparison:", stats);
+    fetchPartiesData();
 
-    // Always update stats state to trigger re-render
-    setStats(newStats);
-  };
+    // Auto-refresh parties and transactions data every 30 seconds
+    const interval = setInterval(fetchPartiesData, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
-  // Function to generate chart data
-  const generateChartData = () => {
-    const months = [];
-    const now = new Date();
+  // Calculate dashboard statistics from real data
+  useEffect(() => {
+    if (jobSheets.length > 0 || parties.length > 0 || transactions.length > 0) {
+      calculateStats(jobSheets, parties, transactions);
+    }
+  }, [jobSheets, parties, transactions]);
 
-    console.log("Generating chart data. JobSheets count:", jobSheets.length);
-    console.log("Sample job sheet data:", jobSheets[0]);
+  // Function to calculate statistics - matching main dashboard logic
+  const calculateStats = (
+    data: JobSheet[],
+    partiesData: any[] = [],
+    transactionsData: any[] = []
+  ) => {
+    console.log("Calculating stats for reports dashboard:", {
+      jobSheets: data.length,
+      parties: partiesData.length,
+      transactions: transactionsData.length,
+    });
 
-    // Always try to generate real data first, fall back to sample data if no real data exists
-    for (let i = 5; i >= 0; i--) {
-      const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const monthStart = new Date(date.getFullYear(), date.getMonth(), 1);
-      const monthEnd = new Date(date.getFullYear(), date.getMonth() + 1, 0);
+    // Filter active (non-deleted) job sheets
+    const activeData = data.filter((sheet) => !sheet.is_deleted);
 
-      const monthJobSheets = jobSheets.filter((sheet) => {
-        if (!sheet.job_date) return false;
-        const jobDate = new Date(sheet.job_date);
-        return jobDate >= monthStart && jobDate <= monthEnd;
-      });
-
-      console.log(
-        `Month ${date.toLocaleDateString("en-US", { month: "short" })}:`,
-        {
-          monthJobSheets: monthJobSheets.length,
-          jobs: monthJobSheets,
-        }
+    // Calculate basic stats from job sheets
+    const totalJobSheets = activeData.length;
+    const totalRevenue = activeData.reduce((sum, sheet) => {
+      return (
+        sum + ((sheet.printing || 0) + (sheet.uv || 0) + (sheet.baking || 0))
       );
+    }, 0);
+
+    // Add transaction revenue
+    const transactionRevenue = transactionsData
+      .filter((t) => t.type === "payment")
+      .reduce((sum, t) => sum + (t.amount || 0), 0);
+
+    const combinedRevenue = totalRevenue + transactionRevenue;
+    const avgOrderValue =
+      totalJobSheets > 0 ? combinedRevenue / totalJobSheets : 0;
+
+    // This month's data
+    const thisMonth = new Date();
+    thisMonth.setDate(1);
+    const thisMonthData = activeData.filter((sheet) => {
+      return new Date(sheet.job_date) >= thisMonth;
+    });
+    const thisMonthRevenue = thisMonthData.reduce((sum, sheet) => {
+      return (
+        sum + ((sheet.printing || 0) + (sheet.uv || 0) + (sheet.baking || 0))
+      );
+    }, 0);
+
+    // Last month's data
+    const lastMonth = new Date();
+    lastMonth.setMonth(lastMonth.getMonth() - 1);
+    lastMonth.setDate(1);
+    const nextMonth = new Date(lastMonth);
+    nextMonth.setMonth(nextMonth.getMonth() + 1);
+
+    const lastMonthData = activeData.filter((sheet) => {
+      const sheetDate = new Date(sheet.job_date);
+      return sheetDate >= lastMonth && sheetDate < nextMonth;
+    });
+    const lastMonthRevenue = lastMonthData.reduce((sum, sheet) => {
+      return (
+        sum + ((sheet.printing || 0) + (sheet.uv || 0) + (sheet.baking || 0))
+      );
+    }, 0);
+
+    const revenueGrowth =
+      lastMonthRevenue > 0
+        ? ((thisMonthRevenue - lastMonthRevenue) / lastMonthRevenue) * 100
+        : 0;
+
+    const newStats = {
+      totalJobSheets,
+      totalParties: partiesData.length,
+      totalRevenue: combinedRevenue,
+      avgOrderValue,
+      thisMonthRevenue,
+      lastMonthRevenue,
+      revenueGrowth,
+      totalOrders: totalJobSheets,
+    };
+
+    console.log("Calculated reports stats:", newStats);
+    setStats(newStats);
+
+    // Generate chart data
+    const chartData: ChartData[] = [];
+    for (let i = 11; i >= 0; i--) {
+      const month = new Date();
+      month.setMonth(month.getMonth() - i);
+      const monthStart = new Date(month.getFullYear(), month.getMonth(), 1);
+      const monthEnd = new Date(month.getFullYear(), month.getMonth() + 1, 0);
+
+      const monthJobSheets = activeData.filter((sheet) => {
+        const sheetDate = new Date(sheet.job_date);
+        return sheetDate >= monthStart && sheetDate <= monthEnd;
+      });
 
       const monthRevenue = monthJobSheets.reduce((sum, sheet) => {
-        // Use correct field names from the actual data structure
-        const printing = parseFloat(sheet.printing?.toString() || "0");
-        const uv = parseFloat(sheet.uv?.toString() || "0");
-        const baking = parseFloat(sheet.baking?.toString() || "0");
-        const total = printing + uv + baking;
-        console.log(`Sheet revenue calculation:`, {
-          printing,
-          uv,
-          baking,
-          total,
-        });
-        return sum + total;
+        return (
+          sum + ((sheet.printing || 0) + (sheet.uv || 0) + (sheet.baking || 0))
+        );
       }, 0);
 
-      const monthSheets = monthJobSheets.reduce((sum, sheet) => {
-        // Use correct field name - it's 'paper_sheet' not 'sheet'
-        const sheets = parseInt(sheet.paper_sheet?.toString() || "0");
-        console.log(`Sheet count:`, { paper_sheet: sheet.paper_sheet, sheets });
-        return sum + sheets;
-      }, 0);
-
-      months.push({
-        month: date.toLocaleDateString("en-US", { month: "short" }),
-        jobs: monthJobSheets.length,
+      chartData.push({
+        month: month.toLocaleDateString("en-US", { month: "short" }),
+        jobSheets: monthJobSheets.length,
         revenue: monthRevenue,
-        sheets: monthSheets,
       });
     }
-
-    // If no real data for any month, use sample data for visualization
-    const hasRealData = months.some(
-      (m) => m.jobs > 0 || m.revenue > 0 || m.sheets > 0
-    );
-
-    if (!hasRealData && jobSheets.length === 0) {
-      console.log("No real data found, using sample data for demonstration");
-
-      // Generate realistic sample data
-      const sampleData = [
-        { revenue: 150000, jobs: 2, sheets: 45 },
-        { revenue: 175000, jobs: 3, sheets: 52 },
-        { revenue: 200000, jobs: 4, sheets: 60 },
-        { revenue: 180000, jobs: 3, sheets: 48 },
-        { revenue: 220000, jobs: 5, sheets: 65 },
-        { revenue: 253321, jobs: 3, sheets: 55 },
-      ];
-
-      for (let i = 0; i < months.length; i++) {
-        const dataIndex = i;
-        months[i] = {
-          ...months[i],
-          jobs: sampleData[dataIndex]?.jobs || 0,
-          revenue: sampleData[dataIndex]?.revenue || 0,
-          sheets: sampleData[dataIndex]?.sheets || 0,
-        };
-      }
-    }
-
-    console.log("Final generated chart data:", months);
-    setChartData(months);
+    setChartData(chartData);
   };
 
   // Function to mark notification as read
@@ -295,7 +246,7 @@ export default function JobSheetAdminDashboard() {
       );
       if (typeof window !== "undefined") {
         localStorage.setItem(
-          "jobsheet-admin-notifications",
+          "jobsheet-reports-notifications",
           JSON.stringify(updated)
         );
       }
@@ -303,18 +254,51 @@ export default function JobSheetAdminDashboard() {
     });
   };
 
+  const handleRefresh = async () => {
+    console.log("Refreshing reports dashboard data...");
+
+    // Refresh job sheets data
+    await refetch();
+
+    // Refresh parties and transactions data
+    try {
+      const [partiesResponse, transactionsResponse] = await Promise.all([
+        fetch("/api/parties"),
+        fetch("/api/parties/transactions"),
+      ]);
+
+      if (partiesResponse.ok && transactionsResponse.ok) {
+        const [partiesData, transactionsData] = await Promise.all([
+          partiesResponse.json(),
+          transactionsResponse.json(),
+        ]);
+
+        setParties(partiesData);
+        setTransactions(transactionsData);
+
+        console.log("Reports dashboard data refreshed successfully");
+      }
+    } catch (error) {
+      console.error("Error refreshing data:", error);
+    }
+  };
+
+  // Auto-refresh data every 30 seconds for real-time updates
+  useEffect(() => {
+    const interval = setInterval(() => {
+      handleRefresh();
+    }, 30000); // 30 seconds
+
+    return () => clearInterval(interval);
+  }, []);
+
   // Show loading state
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen bg-white flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-gray-900 mx-auto mb-4"></div>
-          <h2 className="text-xl font-semibold text-gray-700 mb-2">
-            Loading Job Sheet Dashboard
-          </h2>
-          <p className="text-gray-500">
-            Please wait while we fetch your production data...
-          </p>
+          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-400 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading reports dashboard...</p>
         </div>
       </div>
     );
@@ -323,15 +307,18 @@ export default function JobSheetAdminDashboard() {
   // Show error state
   if (error) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-white flex items-center justify-center">
         <div className="text-center">
-          <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
-          <h2 className="text-xl font-semibold text-gray-700 mb-2">
-            Database Connection Error
+          <AlertCircle className="w-16 h-16 text-red-400 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-gray-800 mb-2">
+            Error Loading Reports
           </h2>
-          <p className="text-gray-500 mb-4">{error}</p>
-          <Button onClick={() => window.location.reload()}>
-            Retry Connection
+          <p className="text-gray-600 mb-4">{error}</p>
+          <Button
+            onClick={handleRefresh}
+            className="bg-blue-500 hover:bg-blue-600 text-white"
+          >
+            Try Again
           </Button>
         </div>
       </div>
@@ -340,20 +327,21 @@ export default function JobSheetAdminDashboard() {
 
   // Main dashboard render
   return (
-    <div className="min-h-screen">
-      {/* Navigation Bar */}
-      {/* <JobSheetDashboardNavbar
-        notifications={notifications}
-        markNotificationAsRead={markNotificationAsRead}
-        searchTerm={searchTerm}
-        setSearchTerm={setSearchTerm}
-      /> */}
-      {/* <Navbar /> */}
-
+    <div className="min-h-screen bg-white">
       {/* Main Content */}
-      <div className="container mx-auto px-4 py-2">
+      <div className="container mx-auto px-4 py-6">
+        {/* Page Header */}
+        <div className="mb-8">
+          <h1 className="text-2xl font-bold text-gray-800 mb-2">
+            Reports Dashboard
+          </h1>
+          <p className="text-gray-600">
+            Comprehensive business analytics and job sheet reports
+          </p>
+        </div>
+
         {/* Dashboard Statistics */}
-        <JobSheetDashboardStats stats={stats} chartData={chartData} />
+        <DashboardStats stats={stats} chartData={chartData} />
 
         {/* Job Sheets Table */}
         <JobSheetsTable
@@ -367,7 +355,7 @@ export default function JobSheetAdminDashboard() {
           addNote={addNote}
           generateReport={generateReport}
           setSelectedJobSheet={setSelectedJobSheet}
-          onRefresh={refetch}
+          onRefresh={handleRefresh}
           softDeleteJobSheet={softDeleteJobSheet}
         />
 

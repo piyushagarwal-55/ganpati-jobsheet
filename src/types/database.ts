@@ -1,26 +1,27 @@
-import { Database } from './supabase';
+import { Database } from "./supabase";
 
-export type QuotationRequest = Database['public']['Tables']['quotation_requests']['Row'];
-export type QuotationNote = Database['public']['Tables']['quotation_notes']['Row'];
-export type Invoice = Database['public']['Tables']['invoices']['Row'];
+// Job Sheet related types
+export type JobSheet = Database["public"]["Tables"]["job_sheets"]["Row"];
+export type JobSheetNote =
+  Database["public"]["Tables"]["job_sheet_notes"]["Row"];
+export type Party = Database["public"]["Tables"]["parties"]["Row"];
+export type PartyTransaction =
+  Database["public"]["Tables"]["party_transactions"]["Row"];
 
 export interface DashboardStats {
-  totalQuotations: number;
-  pendingQuotations: number;
-  completedQuotations: number;
-  inProgressQuotations: number;
-  cancelledQuotations: number;
+  totalJobSheets: number;
+  totalParties: number;
   totalRevenue: number;
   avgOrderValue: number;
-  thisMonthQuotations: number;
-  lastMonthQuotations: number;
+  thisMonthRevenue: number;
+  lastMonthRevenue: number;
   revenueGrowth: number;
-  conversionRate: number;
+  totalOrders: number;
 }
 
 export interface ChartData {
   month: string;
-  quotations: number;
+  jobSheets: number;
   revenue: number;
 }
 

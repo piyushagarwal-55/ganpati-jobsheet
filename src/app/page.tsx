@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -24,6 +24,9 @@ import {
   Zap,
   LineChart,
   PieChart,
+  RefreshCw,
+  Wifi,
+  WifiOff,
 } from "lucide-react";
 import {
   LineChart as RechartsLineChart,
@@ -63,6 +66,15 @@ interface DashboardStats {
   transactionVolume: number;
 }
 
+interface LoadingState {
+  parties: boolean;
+  transactions: boolean;
+  jobSheets: boolean;
+  charts: boolean;
+}
+
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+
 export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats>({
     totalJobSheets: 0,
@@ -82,7 +94,32 @@ export default function DashboardPage() {
     grossProfit: 0,
     transactionVolume: 0,
   });
-  const [loading, setLoading] = useState(true);
+
+  const [loading, setLoading] = useState<LoadingState>({
+    parties: true,
+    transactions: true,
+    jobSheets: true,
+    charts: true,
+  });
+
+  const [connectionStatus, setConnectionStatus] = useState<
+    "online" | "offline" | "slow"
+  >("online");
+  const [retryCount, setRetryCount] = useState(0);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  // Cached data with timestamps
+  const [cachedData, setCachedData] = useState<{
+    parties: { data: any[] | null; timestamp: number };
+    transactions: { data: any[] | null; timestamp: number };
+    jobSheets: { data: any[] | null; timestamp: number };
+  }>({
+    parties: { data: null, timestamp: 0 },
+    transactions: { data: null, timestamp: 0 },
+    jobSheets: { data: null, timestamp: 0 },
+  });
+
   const [performanceData, setPerformanceData] = useState([
     { name: "Revenue Growth", value: 0, color: "#10b981" },
     { name: "Job Efficiency", value: 0, color: "#3b82f6" },
@@ -90,7 +127,6 @@ export default function DashboardPage() {
     { name: "Production Quality", value: 0, color: "#8b5cf6" },
   ]);
 
-  // Chart data - this will be updated with real data
   const [chartData, setChartData] = useState([
     {
       month: "Jan",
@@ -136,542 +172,580 @@ export default function DashboardPage() {
     },
   ]);
 
-  const businessMetrics = [
-    {
-      metric: "Completed Jobs",
-      current: stats.totalJobSheets,
-      target: 25,
-      color: "#10b981",
-    },
-    {
-      metric: "Active Customers",
-      current: stats.totalParties,
-      target: 15,
-      color: "#3b82f6",
-    },
-    {
-      metric: "Revenue (₹K)",
-      current: Math.round(stats.totalRevenue / 1000),
-      target: 350,
-      color: "#f59e0b",
-    },
-    {
-      metric: "Efficiency %",
-      current: Math.round(
-        performanceData.find((p) => p.name === "Job Efficiency")?.value || 0
-      ),
-      target: 95,
-      color: "#8b5cf6",
-    },
-  ];
+  // Check if cached data is still valid
+  const isCacheValid = useCallback((timestamp: number) => {
+    return Date.now() - timestamp < CACHE_DURATION;
+  }, []);
 
+  // Optimized API fetch with timeout and retry
+  const fetchWithRetry = useCallback(
+    async (url: string, retries = 2): Promise<any> => {
+      for (let attempt = 0; attempt <= retries; attempt++) {
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 3000);
+
+          const response = await fetch(url, {
+            signal: controller.signal,
+            cache: "force-cache",
+            headers: {
+              "Cache-Control": "max-age=60",
+            },
+          });
+
+          clearTimeout(timeoutId);
+
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+          }
+
+          return await response.json();
+        } catch (error) {
+          if (attempt === retries) {
+            throw error;
+          }
+          await new Promise((resolve) =>
+            setTimeout(resolve, Math.pow(2, attempt) * 500)
+          );
+        }
+      }
+    },
+    []
+  );
+
+  // Progressive data loading
   useEffect(() => {
     loadDashboardData();
   }, []);
 
-  // Calculate performance metrics from real data
-  const calculatePerformanceMetrics = (
-    jobSheets: any[],
-    transactions: any[],
-    parties: any[]
-  ) => {
-    console.log("Calculating performance metrics...");
-
-    const now = new Date();
-    const currentMonth = now.getMonth();
-    const currentYear = now.getFullYear();
-    const lastMonth = currentMonth === 0 ? 11 : currentMonth - 1;
-    const lastMonthYear = currentMonth === 0 ? currentYear - 1 : currentYear;
-
-    // Filter job sheets by month
-    const currentMonthJobs = jobSheets.filter((job) => {
-      const jobDate = new Date(job.created_at || job.job_date);
-      return (
-        jobDate.getMonth() === currentMonth &&
-        jobDate.getFullYear() === currentYear
-      );
-    });
-
-    const lastMonthJobs = jobSheets.filter((job) => {
-      const jobDate = new Date(job.created_at || job.job_date);
-      return (
-        jobDate.getMonth() === lastMonth &&
-        jobDate.getFullYear() === lastMonthYear
-      );
-    });
-
-    // 1. Revenue Growth Calculation
-    const currentMonthRevenue = currentMonthJobs.reduce(
-      (sum, job) =>
-        sum + ((job.printing || 0) + (job.uv || 0) + (job.baking || 0)),
-      0
-    );
-    const lastMonthRevenue = lastMonthJobs.reduce(
-      (sum, job) =>
-        sum + ((job.printing || 0) + (job.uv || 0) + (job.baking || 0)),
-      0
-    );
-
-    const revenueGrowth =
-      lastMonthRevenue > 0
-        ? ((currentMonthRevenue - lastMonthRevenue) / lastMonthRevenue) * 100
-        : currentMonthRevenue > 0
-          ? 100
-          : 0;
-
-    // 2. Job Efficiency Calculation (based on completion time and targets)
-    const totalJobs = jobSheets.length;
-    const jobsWithCompleteData = jobSheets.filter(
-      (job) => job.printing && job.paper_sheet && job.imp
-    ).length;
-    const jobEfficiency =
-      totalJobs > 0 ? (jobsWithCompleteData / totalJobs) * 100 : 0;
-
-    // 3. Customer Retention Calculation
-    const totalCustomers = parties.length;
-    const activeCustomers = parties.filter((party) => {
-      // Check if customer has transactions in the last 90 days
-      const recentTransactions = transactions.filter((t) => {
-        const transactionDate = new Date(t.created_at);
-        const ninetyDaysAgo = new Date(
-          now.getTime() - 90 * 24 * 60 * 60 * 1000
-        );
-        return t.party_name === party.name && transactionDate > ninetyDaysAgo;
-      });
-      return recentTransactions.length > 0;
-    }).length;
-
-    const customerRetention =
-      totalCustomers > 0 ? (activeCustomers / totalCustomers) * 100 : 0;
-
-    // 4. Production Quality Calculation (based on successful job completion)
-    const jobsWithUV = jobSheets.filter(
-      (job) => job.uv && parseFloat(job.uv) > 0
-    ).length;
-    const jobsWithBaking = jobSheets.filter(
-      (job) => job.baking && parseFloat(job.baking) > 0
-    ).length;
-    const qualityJobs = jobsWithUV + jobsWithBaking;
-    const totalQualityOpportunities = totalJobs * 2; // UV and Baking opportunities
-    const productionQuality =
-      totalQualityOpportunities > 0
-        ? (qualityJobs / totalQualityOpportunities) * 100
-        : totalJobs > 0
-          ? 85
-          : 0; // Default 85% if no quality data
-
-    console.log("Performance calculations:", {
-      revenueGrowth: revenueGrowth.toFixed(1),
-      jobEfficiency: jobEfficiency.toFixed(1),
-      customerRetention: customerRetention.toFixed(1),
-      productionQuality: productionQuality.toFixed(1),
-    });
-
-    return [
+  // Memoized calculations to avoid re-computation
+  const businessMetrics = useMemo(
+    () => [
       {
-        name: "Revenue Growth",
-        value: Math.max(0, Math.min(100, revenueGrowth)),
+        metric: "Completed Jobs",
+        current: stats.totalJobSheets,
+        target: 25,
         color: "#10b981",
       },
       {
-        name: "Job Efficiency",
-        value: Math.max(0, Math.min(100, jobEfficiency)),
+        metric: "Active Customers",
+        current: stats.totalParties,
+        target: 15,
         color: "#3b82f6",
       },
       {
-        name: "Customer Retention",
-        value: Math.max(0, Math.min(100, customerRetention)),
+        metric: "Revenue (₹K)",
+        current: Math.round(stats.totalRevenue / 1000),
+        target: 350,
         color: "#f59e0b",
       },
       {
-        name: "Production Quality",
-        value: Math.max(0, Math.min(100, productionQuality)),
+        metric: "Efficiency %",
+        current: Math.round(
+          performanceData.find((p) => p.name === "Job Efficiency")?.value || 0
+        ),
+        target: 95,
         color: "#8b5cf6",
       },
-    ];
-  };
+    ],
+    [stats, performanceData]
+  );
 
-  const loadDashboardData = async () => {
+  // Fetch realtime dashboard data
+  const fetchRealtimeData = useCallback(async () => {
     try {
-      setLoading(true);
-      console.log("Loading dashboard data...");
+      const response = await fetch("/api/dashboard/realtime");
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.data.stats.recentActivity) {
+          // Update stats with real-time data including recent transactions
+          setStats((prevStats) => ({
+            ...prevStats,
+            totalJobSheets: data.data.stats.totalJobSheets,
+            totalParties: data.data.stats.totalParties,
+            totalRevenue: data.data.stats.totalRevenue,
+            monthlyRevenue: data.data.stats.thisMonthRevenue,
+            recentTransactions:
+              data.data.stats.recentActivity.recentTransactions || [],
+            recentJobSheets:
+              data.data.stats.recentActivity.weeklyJobSheets || [],
+            roi: data.data.stats.revenueGrowth || 0,
+          }));
 
-      // Load all necessary data in parallel with timeout and retry
-      const fetchWithTimeout = async (url: string, timeout = 5000) => {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), timeout);
+          // Update chart data
+          if (data.data.charts?.monthlyTrend) {
+            setChartData(data.data.charts.monthlyTrend);
+          }
 
-        try {
-          const response = await fetch(url, {
-            signal: controller.signal,
-            cache: "no-cache",
-            headers: {
-              "Content-Type": "application/json",
-            },
-          });
-          clearTimeout(timeoutId);
-          return response;
-        } catch (error) {
-          clearTimeout(timeoutId);
-          throw error;
+          setLastUpdated(new Date());
+          setConnectionStatus("online");
         }
-      };
+      }
+    } catch (error) {
+      console.error("Error fetching realtime data:", error);
+      setConnectionStatus("offline");
+    }
+  }, []);
 
-      let partiesRes: Response | null = null;
-      let transactionsRes: Response | null = null;
-      let jobSheetsRes: Response | null = null;
-
+  const loadDashboardData = useCallback(
+    async (forceRefresh = false) => {
       try {
-        [partiesRes, transactionsRes, jobSheetsRes] = await Promise.all([
-          fetchWithTimeout("/api/parties"),
-          fetchWithTimeout("/api/parties/transactions"),
-          fetchWithTimeout("/api/job-sheets"),
-        ]);
-      } catch (fetchError) {
-        console.error("Fetch error:", fetchError);
-        // If fetch fails, try individual requests with fallbacks
-        try {
-          partiesRes = await fetchWithTimeout("/api/parties");
-        } catch {
-          console.warn("Parties API failed, using mock data");
-          partiesRes = null;
+        setConnectionStatus("online");
+
+        // Show immediate UI with cached data if available and valid
+        if (!forceRefresh) {
+          const validCachedParties =
+            cachedData.parties.data &&
+            isCacheValid(cachedData.parties.timestamp);
+          const validCachedTransactions =
+            cachedData.transactions.data &&
+            isCacheValid(cachedData.transactions.timestamp);
+          const validCachedJobSheets =
+            cachedData.jobSheets.data &&
+            isCacheValid(cachedData.jobSheets.timestamp);
+
+          if (
+            validCachedParties ||
+            validCachedTransactions ||
+            validCachedJobSheets
+          ) {
+            updateStatsFromCache();
+          }
         }
 
-        try {
-          transactionsRes = await fetchWithTimeout("/api/parties/transactions");
-        } catch {
-          console.warn("Transactions API failed, using mock data");
-          transactionsRes = null;
-        }
+        // Load data progressively - don't wait for all APIs
+        const dataPromises = [
+          loadPartiesData(forceRefresh),
+          loadTransactionsData(forceRefresh),
+          loadJobSheetsData(forceRefresh),
+          fetchRealtimeData(), // Add realtime data fetching
+        ];
 
-        try {
-          jobSheetsRes = await fetchWithTimeout("/api/job-sheets");
-        } catch {
-          console.warn("Job sheets API failed, using mock data");
-          jobSheetsRes = null;
+        // Don't wait for all - process as they complete
+        dataPromises.forEach((promise) => {
+          promise.catch((error) => {
+            setConnectionStatus("slow");
+          });
+        });
+
+        // Wait for at least one to complete
+        await Promise.race(dataPromises);
+        setLastUpdated(new Date());
+        setRetryCount(0);
+      } catch (error) {
+        setConnectionStatus("offline");
+        setRetryCount((prev) => prev + 1);
+
+        // Use fallback data if all fails
+        if (!cachedData.parties.data) {
+          setFallbackData();
         }
       }
+    },
+    [cachedData, isCacheValid, fetchRealtimeData]
+  );
 
-      console.log("API responses:", {
-        partiesStatus: partiesRes?.status || "failed",
-        transactionsStatus: transactionsRes?.status || "failed",
-        jobSheetsStatus: jobSheetsRes?.status || "failed",
+  // Auto-refresh realtime data every 15 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchRealtimeData();
+    }, 15000);
+
+    return () => clearInterval(interval);
+  }, [fetchRealtimeData]);
+
+  const loadPartiesData = useCallback(
+    async (forceRefresh = false) => {
+      try {
+        if (
+          !forceRefresh &&
+          cachedData.parties.data &&
+          isCacheValid(cachedData.parties.timestamp)
+        ) {
+          setLoading((prev) => ({ ...prev, parties: false }));
+          return;
+        }
+
+        const data = await fetchWithRetry("/api/parties");
+        setCachedData((prev) => ({
+          ...prev,
+          parties: { data, timestamp: Date.now() },
+        }));
+        setLoading((prev) => ({ ...prev, parties: false }));
+        updateStats({ parties: data });
+      } catch (error) {
+        setLoading((prev) => ({ ...prev, parties: false }));
+        throw error;
+      }
+    },
+    [cachedData, fetchWithRetry, isCacheValid]
+  );
+
+  const loadTransactionsData = useCallback(
+    async (forceRefresh = false) => {
+      try {
+        if (
+          !forceRefresh &&
+          cachedData.transactions.data &&
+          isCacheValid(cachedData.transactions.timestamp)
+        ) {
+          setLoading((prev) => ({ ...prev, transactions: false }));
+          return;
+        }
+
+        const data = await fetchWithRetry("/api/parties/transactions");
+        setCachedData((prev) => ({
+          ...prev,
+          transactions: { data, timestamp: Date.now() },
+        }));
+        setLoading((prev) => ({ ...prev, transactions: false }));
+        updateStats({ transactions: data });
+      } catch (error) {
+        setLoading((prev) => ({ ...prev, transactions: false }));
+        throw error;
+      }
+    },
+    [cachedData, fetchWithRetry, isCacheValid]
+  );
+
+  const loadJobSheetsData = useCallback(
+    async (forceRefresh = false) => {
+      try {
+        if (
+          !forceRefresh &&
+          cachedData.jobSheets.data &&
+          isCacheValid(cachedData.jobSheets.timestamp)
+        ) {
+          setLoading((prev) => ({ ...prev, jobSheets: false, charts: false }));
+          return;
+        }
+
+        const data = await fetchWithRetry("/api/job-sheets");
+        const jobSheets = data?.data || data || [];
+        setCachedData((prev) => ({
+          ...prev,
+          jobSheets: { data: jobSheets, timestamp: Date.now() },
+        }));
+        setLoading((prev) => ({ ...prev, jobSheets: false, charts: false }));
+        updateStats({ jobSheets });
+
+        // Update charts with real data
+        if (jobSheets.length > 0) {
+          const monthlyData = generateMonthlyChartData(jobSheets);
+          setChartData(monthlyData);
+        }
+      } catch (error) {
+        setLoading((prev) => ({ ...prev, jobSheets: false, charts: false }));
+        throw error;
+      }
+    },
+    [cachedData, fetchWithRetry, isCacheValid]
+  );
+
+  const updateStatsFromCache = useCallback(() => {
+    const { parties, transactions, jobSheets } = cachedData;
+    if (parties.data || transactions.data || jobSheets.data) {
+      updateStats({
+        parties: parties.data,
+        transactions: transactions.data,
+        jobSheets: jobSheets.data,
       });
+    }
+  }, [cachedData]);
 
-      // Initialize with fallback data
-      let parties = [];
-      let transactions = [];
-      let jobSheets = { data: [] };
+  const updateStats = useCallback(
+    ({
+      parties,
+      transactions,
+      jobSheets,
+    }: {
+      parties?: any[] | null;
+      transactions?: any[] | null;
+      jobSheets?: any[] | null;
+    }) => {
+      // Use existing cache if not provided
+      const currentParties = parties || cachedData.parties.data || [];
+      const currentTransactions =
+        transactions || cachedData.transactions.data || [];
+      const currentJobSheets = jobSheets || cachedData.jobSheets.data || [];
 
-      // Try to get parties data
-      if (partiesRes?.ok) {
-        try {
-          parties = await partiesRes.json();
-          console.log("Parties loaded:", parties?.length);
-        } catch (e) {
-          console.warn("Failed to parse parties JSON:", e);
-        }
-      }
-
-      // Try to get transactions data
-      if (transactionsRes?.ok) {
-        try {
-          transactions = await transactionsRes.json();
-          console.log("Transactions loaded:", transactions?.length);
-        } catch (e) {
-          console.warn("Failed to parse transactions JSON:", e);
-        }
-      }
-
-      // Try to get job sheets data
-      if (jobSheetsRes?.ok) {
-        try {
-          jobSheets = await jobSheetsRes.json();
-          console.log("Job sheets loaded:", jobSheets?.data?.length);
-        } catch (e) {
-          console.warn("Failed to parse job sheets JSON:", e);
-        }
-      }
-
-      console.log("Data loaded:", {
-        partiesCount: parties?.length,
-        transactionsCount: transactions?.length,
-        jobSheetsCount: jobSheets?.data?.length,
-      });
-
-      // Filter out deleted transactions for accurate analytics
-      const activeTransactions = Array.isArray(transactions)
-        ? transactions.filter((t: any) => !t.is_deleted)
-        : [];
-
-      console.log(
-        "Active transactions:",
-        activeTransactions.length,
-        "Total transactions:",
-        transactions?.length
+      // Quick calculations - optimized for speed
+      const activeTransactions = currentTransactions.filter(
+        (t: any) => !t.is_deleted
       );
 
-      const totalBalance = Array.isArray(parties)
-        ? parties.reduce(
-            (sum: number, party: any) => sum + (party.balance || 0),
-            0
-          )
-        : 0;
+      const totalBalance = currentParties.reduce(
+        (sum: number, party: any) => sum + (party.balance || 0),
+        0
+      );
 
-      // Calculate total revenue from active payments only
+      const jobSheetRevenue = currentJobSheets.reduce(
+        (sum: number, job: any) =>
+          sum + (job.printing || 0) + (job.uv || 0) + (job.baking || 0),
+        0
+      );
+
       const totalPayments = activeTransactions
         .filter((t: any) => t.type === "payment")
         .reduce((sum: number, t: any) => sum + (t.amount || 0), 0);
 
-      // Calculate total orders from active transactions
       const totalOrders = activeTransactions
         .filter((t: any) => t.type === "order")
         .reduce((sum: number, t: any) => sum + (t.amount || 0), 0);
 
-      // Portfolio Performance = Total Revenue from job sheets + payment transactions
-      const jobSheetRevenue = Array.isArray(jobSheets.data)
-        ? jobSheets.data.reduce(
-            (sum: number, job: any) =>
-              sum +
-              parseFloat(job.printing || 0) +
-              parseFloat(job.uv || 0) +
-              parseFloat(job.baking || 0),
-            0
-          )
-        : 0;
+      // Calculate monthly revenue (simplified)
+      const now = new Date();
+      const currentMonth = now.getMonth();
+      const currentYear = now.getFullYear();
 
-      const portfolioPerformance = jobSheetRevenue; // Use job sheet revenue as primary metric
-
-      // Calculate volume from active transactions and job sheets
-      const transactionVolume = activeTransactions.length;
-      const jobSheetVolume = jobSheets?.data?.length || 0;
-      const totalVolume = Math.max(transactionVolume, jobSheetVolume);
-
-      // Calculate impressions from job sheets
-      const totalImpressions = Array.isArray(jobSheets.data)
-        ? jobSheets.data.reduce(
-            (sum: number, job: any) => sum + parseInt(job.imp || 0),
-            0
-          )
-        : 25; // fallback
-
-      // Calculate ROI = (Revenue - Costs) / Costs * 100
-      // For printing business, typical costs are 60-70% of revenue
-      const estimatedCosts = portfolioPerformance * 0.65; // 65% cost ratio
-      const grossProfit = portfolioPerformance - estimatedCosts;
-      const roi = estimatedCosts > 0 ? (grossProfit / estimatedCosts) * 100 : 0;
-
-      // Calculate current month stats from active data only
-      const currentMonth = new Date().getMonth();
-      const currentYear = new Date().getFullYear();
-
-      const monthlyActiveTransactions = activeTransactions.filter((t: any) => {
-        if (!t.created_at) return false;
-        const transactionDate = new Date(t.created_at);
+      const monthlyJobs = currentJobSheets.filter((job: any) => {
+        if (!job.created_at) return false;
+        const jobDate = new Date(job.created_at);
         return (
-          transactionDate.getMonth() === currentMonth &&
-          transactionDate.getFullYear() === currentYear
+          jobDate.getMonth() === currentMonth &&
+          jobDate.getFullYear() === currentYear
         );
       });
 
-      const monthlyJobs = Array.isArray(jobSheets.data)
-        ? jobSheets.data.filter((job: any) => {
-            if (!job.created_at) return false;
-            const jobDate = new Date(job.created_at);
-            return (
-              jobDate.getMonth() === currentMonth &&
-              jobDate.getFullYear() === currentYear
-            );
-          })
-        : [];
-
       const monthlyRevenue = monthlyJobs.reduce(
         (sum: number, job: any) =>
-          sum +
-          parseFloat(job.printing || 0) +
-          parseFloat(job.uv || 0) +
-          parseFloat(job.baking || 0),
+          sum + (job.printing || 0) + (job.uv || 0) + (job.baking || 0),
         0
       );
 
-      const jobSheetsCount = jobSheets.data?.length || 0;
+      const estimatedCosts = jobSheetRevenue * 0.65;
+      const grossProfit = jobSheetRevenue - estimatedCosts;
+      const roi = estimatedCosts > 0 ? (grossProfit / estimatedCosts) * 100 : 0;
 
       const newStats = {
-        totalJobSheets: jobSheetsCount,
-        totalParties: parties?.length || 0,
+        totalJobSheets: currentJobSheets.length,
+        totalParties: currentParties.length,
         totalBalance,
-        totalRevenue: portfolioPerformance, // Use portfolio performance as main revenue metric
+        totalRevenue: jobSheetRevenue,
         monthlyRevenue,
-        sheetsProcessed: Math.round(jobSheetsCount * 0.8), // 80% processed
-        impressions: totalImpressions,
+        sheetsProcessed: Math.round(currentJobSheets.length * 0.8),
+        impressions:
+          currentJobSheets.reduce(
+            (sum: number, job: any) => sum + (job.imp || 0),
+            0
+          ) || 25,
         pendingJobs: Math.max(
           0,
-          jobSheetsCount - Math.round(jobSheetsCount * 0.8)
+          currentJobSheets.length - Math.round(currentJobSheets.length * 0.8)
         ),
-        recentTransactions: activeTransactions.slice(0, 5), // Only active transactions
-        recentJobSheets: Array.isArray(jobSheets.data)
-          ? jobSheets.data.slice(0, 5)
-          : [],
-        // Add new metrics for ROI calculation
+        recentTransactions: activeTransactions.slice(0, 5),
+        recentJobSheets: currentJobSheets.slice(0, 5),
         totalPayments,
         totalOrders,
         roi,
         estimatedCosts,
         grossProfit,
-        transactionVolume,
+        transactionVolume: activeTransactions.length,
       };
 
-      console.log("Setting new stats:", newStats);
       setStats(newStats);
 
-      // Update chart data with real data if available
-      if (jobSheetsCount > 0) {
-        // Generate dynamic chart data based on actual job sheets
-        const monthlyData = generateMonthlyChartData(jobSheets.data || []);
-        setChartData(monthlyData);
-      }
+      // Update performance metrics asynchronously
+      requestIdleCallback(() => {
+        const calculatedPerformanceData = calculatePerformanceMetrics(
+          currentJobSheets,
+          currentTransactions,
+          currentParties
+        );
+        setPerformanceData(calculatedPerformanceData);
+      });
+    },
+    [cachedData]
+  );
 
-      // Calculate performance metrics from real data
-      const calculatedPerformanceData = calculatePerformanceMetrics(
-        jobSheets.data || [],
-        transactions || [],
-        parties || []
-      );
-      setPerformanceData(calculatedPerformanceData);
-    } catch (error) {
-      console.error("Error loading dashboard data:", error);
-      // Set fallback data when API fails
-      setStats({
-        totalJobSheets: 3,
-        totalParties: 5,
-        totalBalance: 0,
-        totalRevenue: 253321,
-        monthlyRevenue: 84440,
-        sheetsProcessed: 0,
-        impressions: 25,
-        pendingJobs: 0,
-        recentTransactions: [],
-        recentJobSheets: [],
-        totalPayments: 0,
-        totalOrders: 0,
-        roi: 0,
-        estimatedCosts: 0,
-        grossProfit: 0,
-        transactionVolume: 0,
+  const setFallbackData = useCallback(() => {
+    setStats({
+      totalJobSheets: 3,
+      totalParties: 5,
+      totalBalance: 0,
+      totalRevenue: 253321,
+      monthlyRevenue: 84440,
+      sheetsProcessed: 2,
+      impressions: 25,
+      pendingJobs: 1,
+      recentTransactions: [],
+      recentJobSheets: [],
+      totalPayments: 0,
+      totalOrders: 0,
+      roi: 15.5,
+      estimatedCosts: 164659,
+      grossProfit: 88662,
+      transactionVolume: 0,
+    });
+
+    setPerformanceData([
+      { name: "Revenue Growth", value: 12.5, color: "#10b981" },
+      { name: "Job Efficiency", value: 85.0, color: "#3b82f6" },
+      { name: "Customer Retention", value: 90.0, color: "#f59e0b" },
+      { name: "Production Quality", value: 88.0, color: "#8b5cf6" },
+    ]);
+
+    setLoading({
+      parties: false,
+      transactions: false,
+      jobSheets: false,
+      charts: false,
+    });
+  }, []);
+
+  // Calculate performance metrics from real data
+  const calculatePerformanceMetrics = useCallback(
+    (jobSheets: any[], transactions: any[], parties: any[]) => {
+      const currentMonth = new Date().getMonth();
+      const currentYear = new Date().getFullYear();
+
+      // Current month revenue
+      const currentMonthJobs = jobSheets.filter((job) => {
+        if (!job.created_at) return false;
+        const jobDate = new Date(job.created_at);
+        return (
+          jobDate.getMonth() === currentMonth &&
+          jobDate.getFullYear() === currentYear
+        );
       });
 
-      // Set fallback performance data when API fails
-      setPerformanceData([
-        { name: "Revenue Growth", value: 12.5, color: "#10b981" },
-        { name: "Job Efficiency", value: 85.0, color: "#3b82f6" },
-        { name: "Customer Retention", value: 90.0, color: "#f59e0b" },
-        { name: "Production Quality", value: 88.0, color: "#8b5cf6" },
-      ]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const generateMonthlyChartData = (jobSheets: any[]) => {
-    const months = [];
-    const now = new Date();
-
-    for (let i = 5; i >= 0; i--) {
-      const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const monthStart = new Date(date.getFullYear(), date.getMonth(), 1);
-      const monthEnd = new Date(date.getFullYear(), date.getMonth() + 1, 0);
-
-      const monthJobSheets = jobSheets.filter((sheet: any) => {
-        if (!sheet.created_at) return false;
-        const jobDate = new Date(sheet.created_at);
-        return jobDate >= monthStart && jobDate <= monthEnd;
-      });
-
-      const monthRevenue = monthJobSheets.reduce((sum: number, sheet: any) => {
-        const printing = parseFloat(sheet.printing?.toString() || "0");
-        const uv = parseFloat(sheet.uv?.toString() || "0");
-        const baking = parseFloat(sheet.baking?.toString() || "0");
-        return sum + printing + uv + baking;
-      }, 0);
-
-      const monthImpressions = monthJobSheets.reduce(
-        (sum: number, sheet: any) => {
-          return sum + parseInt(sheet.imp?.toString() || "0");
-        },
+      const currentRevenue = currentMonthJobs.reduce(
+        (sum, job) =>
+          sum + (job.printing || 0) + (job.uv || 0) + (job.baking || 0),
         0
       );
 
-      months.push({
-        month: date.toLocaleDateString("en-US", { month: "short" }),
-        revenue: monthRevenue,
-        jobs: monthJobSheets.length,
-        impressions: monthImpressions,
-        efficiency:
-          monthJobSheets.length > 0 ? Math.min(95, 80 + Math.random() * 15) : 0,
-      });
-    }
+      // Last month revenue for growth calculation
+      const lastMonth = currentMonth === 0 ? 11 : currentMonth - 1;
+      const lastYear = currentMonth === 0 ? currentYear - 1 : currentYear;
 
-    // If no real data, return sample data
-    if (months.every((m) => m.revenue === 0 && m.jobs === 0)) {
+      const lastMonthJobs = jobSheets.filter((job) => {
+        if (!job.created_at) return false;
+        const jobDate = new Date(job.created_at);
+        return (
+          jobDate.getMonth() === lastMonth && jobDate.getFullYear() === lastYear
+        );
+      });
+
+      const lastRevenue = lastMonthJobs.reduce(
+        (sum, job) =>
+          sum + (job.printing || 0) + (job.uv || 0) + (job.baking || 0),
+        0
+      );
+
+      const revenueGrowth =
+        lastRevenue > 0
+          ? ((currentRevenue - lastRevenue) / lastRevenue) * 100
+          : 25;
+
+      // Job efficiency (jobs with complete data)
+      const completeJobs = jobSheets.filter(
+        (job) => job.printing && job.size && job.description && job.party_name
+      );
+      const jobEfficiency =
+        jobSheets.length > 0
+          ? (completeJobs.length / jobSheets.length) * 100
+          : 85;
+
+      // Customer retention (parties with recent transactions)
+      const recentTransactions = transactions.filter((t) => {
+        if (!t.created_at) return false;
+        const transDate = new Date(t.created_at);
+        const threeMonthsAgo = new Date();
+        threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+        return transDate >= threeMonthsAgo;
+      });
+
+      const activeParties = new Set(recentTransactions.map((t) => t.party_id));
+      const customerRetention =
+        parties.length > 0 ? (activeParties.size / parties.length) * 100 : 90;
+
+      // Production quality (jobs with UV/baking processes)
+      const qualityJobs = jobSheets.filter(
+        (job) => (job.uv && job.uv > 0) || (job.baking && job.baking > 0)
+      );
+      const productionQuality =
+        jobSheets.length > 0
+          ? (qualityJobs.length / jobSheets.length) * 100
+          : 88;
+
       return [
         {
-          month: "Jan",
-          revenue: 180000,
-          jobs: 12,
-          impressions: 890,
-          efficiency: 85,
+          name: "Revenue Growth",
+          value: Math.max(0, Math.min(100, revenueGrowth)),
+          color: "#10b981",
         },
         {
-          month: "Feb",
-          revenue: 220000,
-          jobs: 15,
-          impressions: 1150,
-          efficiency: 88,
+          name: "Job Efficiency",
+          value: Math.max(0, Math.min(100, jobEfficiency)),
+          color: "#3b82f6",
         },
         {
-          month: "Mar",
-          revenue: 195000,
-          jobs: 13,
-          impressions: 965,
-          efficiency: 82,
+          name: "Customer Retention",
+          value: Math.max(0, Math.min(100, customerRetention)),
+          color: "#f59e0b",
         },
         {
-          month: "Apr",
-          revenue: 265000,
-          jobs: 18,
-          impressions: 1320,
-          efficiency: 90,
-        },
-        {
-          month: "May",
-          revenue: 285000,
-          jobs: 20,
-          impressions: 1485,
-          efficiency: 92,
-        },
-        {
-          month: "Jun",
-          revenue: 310000,
-          jobs: 22,
-          impressions: 1650,
-          efficiency: 95,
+          name: "Production Quality",
+          value: Math.max(0, Math.min(100, productionQuality)),
+          color: "#8b5cf6",
         },
       ];
-    }
+    },
+    []
+  );
 
-    return months;
-  };
+  // Generate monthly chart data from real job sheets
+  const generateMonthlyChartData = useCallback((jobSheets: any[]) => {
+    const monthlyData: { [key: string]: any } = {};
 
-  const formatCurrency = (amount: number) => {
+    jobSheets.forEach((job) => {
+      if (!job.created_at) return;
+
+      const date = new Date(job.created_at);
+      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+      const monthName = date.toLocaleDateString("en-US", { month: "short" });
+
+      if (!monthlyData[monthKey]) {
+        monthlyData[monthKey] = {
+          month: monthName,
+          revenue: 0,
+          jobs: 0,
+          impressions: 0,
+          efficiency: 0,
+        };
+      }
+
+      monthlyData[monthKey].revenue +=
+        (job.printing || 0) + (job.uv || 0) + (job.baking || 0);
+      monthlyData[monthKey].jobs += 1;
+      monthlyData[monthKey].impressions += job.imp || 0;
+    });
+
+    // Convert to array and calculate efficiency
+    const chartArray = Object.values(monthlyData).map((data: any) => ({
+      ...data,
+      efficiency:
+        data.jobs > 0 ? Math.min(100, (data.impressions / data.jobs) * 2) : 85,
+    }));
+
+    // Sort by month and return last 6 months
+    chartArray.sort((a: any, b: any) => a.month.localeCompare(b.month));
+    return chartArray.slice(-6);
+  }, []);
+
+  // Format currency
+  const formatCurrency = useCallback((amount: number) => {
     return new Intl.NumberFormat("en-IN", {
       style: "currency",
       currency: "INR",
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
     }).format(amount);
-  };
+  }, []);
 
-  const formatNumber = (num: number) => {
+  // Format numbers
+  const formatNumber = useCallback((num: number) => {
     if (num >= 1000000) {
       return (num / 1000000).toFixed(1) + "M";
     }
@@ -679,637 +753,758 @@ export default function DashboardPage() {
       return (num / 1000).toFixed(1) + "K";
     }
     return num.toString();
-  };
+  }, []);
 
-  // Chart colors
-  const colors = {
-    primary: "#3b82f6",
-    secondary: "#10b981",
-    tertiary: "#f59e0b",
-    accent: "#8b5cf6",
-  };
+  // Format tooltip values for charts
+  const formatTooltipValue = useCallback(
+    (value: any, name: string) => {
+      if (name === "revenue") {
+        return [formatCurrency(value), "Revenue"];
+      }
+      if (name === "efficiency") {
+        return [`${value}%`, "Efficiency"];
+      }
+      return [value, name];
+    },
+    [formatCurrency]
+  );
 
-  // Custom tooltip formatter
-  const formatTooltipValue = (value: any, name: string) => {
-    if (name === "revenue") {
-      return [formatCurrency(value), "Revenue"];
-    }
-    if (name === "jobs") {
-      return [value, "Jobs"];
-    }
-    if (name === "impressions") {
-      return [formatNumber(value), "Impressions"];
-    }
-    if (name === "efficiency") {
-      return [value + "%", "Efficiency"];
-    }
-    return [value, name];
-  };
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-96">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
-          <p className="text-muted-foreground">Loading dashboard...</p>
-        </div>
-      </div>
-    );
-  }
+  // Manual refresh function
+  const handleRefresh = useCallback(() => {
+    loadDashboardData(true);
+  }, [loadDashboardData]);
 
   return (
-    <div className="">
-      {/* Header */}
-      <div className="flex flex-col gap-2 mt-5 mb-6">
-        <h1 className="text-3xl font-bold tracking-tight">
-          Ganpathi Overseas Dashboard
-        </h1>
-        <p className="text-muted-foreground">
-          Welcome back! Here's what's happening with your business today.
-        </p>
-      </div>
-
-      {/* Key Performance Indicators */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
-        {/* Total Portfolio Performance Card */}
-        <Card className="card-shadow-lg">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">
-                  Portfolio Performance
-                </p>
-                <div className="flex items-baseline gap-2">
-                  <h3 className="text-2xl font-bold text-success">
-                    {formatCurrency(stats.totalRevenue)}
-                  </h3>
-                  <Badge
-                    variant="secondary"
-                    className={`${stats.roi > 20 ? "bg-success/10 text-success" : stats.roi > 10 ? "bg-warning/10 text-warning" : "bg-destructive/10 text-destructive"}`}
-                  >
-                    {stats.roi > 0 ? "+" : ""}
-                    {stats.roi.toFixed(1)}%
-                  </Badge>
-                </div>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Total revenue generated
-                </p>
-                {stats.grossProfit > 0 && (
-                  <p className="text-xs text-muted-foreground">
-                    Profit: {formatCurrency(stats.grossProfit)}
-                  </p>
-                )}
-              </div>
-              <div className="h-12 w-12 rounded-full bg-success/10 flex items-center justify-center">
-                <TrendingUp className="h-6 w-6 text-success" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Volume Card */}
-        <Card className="card-shadow-lg">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">
-                  Volume
-                </p>
-                <div className="flex items-baseline gap-2">
-                  <h3 className="text-2xl font-bold">
-                    {formatNumber(stats.transactionVolume)}
-                  </h3>
-                  <Badge
-                    variant="secondary"
-                    className="bg-primary/10 text-primary"
-                  >
-                    Active
-                  </Badge>
-                </div>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Total transactions processed
-                </p>
-              </div>
-              <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
-                <Activity className="h-6 w-6 text-primary" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* ROI Card */}
-        <Card className="card-shadow-lg">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">ROI</p>
-                <div className="flex items-baseline gap-2">
-                  <h3 className="text-2xl font-bold text-success">
-                    {stats.roi > 0 ? "+" : ""}
-                    {stats.roi.toFixed(1)}%
-                  </h3>
-                  {stats.roi > 0 ? (
-                    <TrendingUp className="h-4 w-4 text-success" />
-                  ) : (
-                    <TrendingDown className="h-4 w-4 text-destructive" />
-                  )}
-                </div>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Return on investment
-                </p>
-              </div>
-              <div className="h-12 w-12 rounded-full bg-warning/10 flex items-center justify-center">
-                <Target className="h-6 w-6 text-warning" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Active Jobs Card */}
-        <Card className="card-shadow-lg">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">
-                  Active Jobs
-                </p>
-                <div className="flex items-baseline gap-2">
-                  <h3 className="text-2xl font-bold">{stats.totalJobSheets}</h3>
-                  <Badge
-                    variant="secondary"
-                    className="bg-primary/10 text-primary"
-                  >
-                    {stats.pendingJobs} pending
-                  </Badge>
-                </div>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Job sheets in progress
-                </p>
-              </div>
-              <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
-                <FileText className="h-6 w-6 text-primary" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Portfolio Performance Charts */}
-      <Card className="card-shadow mb-6">
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="flex items-center gap-2">
-                <BarChart3 className="h-5 w-5 text-primary" />
-                Portfolio Performance
-                <Badge
-                  variant="secondary"
-                  className="bg-success/10 text-success"
-                >
-                  LIVE
-                </Badge>
-              </CardTitle>
-              <p className="text-sm text-muted-foreground mt-1">
-                Real-time business performance tracking and analytics
+    <div className="min-h-screen">
+      <div className="container mx-auto px-4 py-2 max-w-7xl">
+        {/* Header Section */}
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+          <div>
+            <h1 className="text-4xl font-bold text-gray-900 mb-2">
+              Business Dashboard
+            </h1>
+            <p className="text-gray-600 text-lg">
+              Real-time insights for your printing business
+            </p>
+            {lastUpdated && (
+              <p className="text-sm text-gray-500 mt-1">
+                Last updated: {lastUpdated.toLocaleTimeString()}
               </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <Badge variant="outline">
-                24h Change {stats.roi > 0 ? "+" : ""}
-                {(stats.roi * 0.1).toFixed(1)}%
-              </Badge>
-              <Badge variant="outline">
-                Volume {formatNumber(stats.transactionVolume)}
-              </Badge>
-              <Badge variant="outline" className="text-success">
-                ROI {stats.roi > 0 ? "+" : ""}
-                {stats.roi.toFixed(1)}%
-              </Badge>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {/* Revenue Trend Chart */}
-            <div className="space-y-4">
-              <h4 className="font-semibold text-lg flex items-center gap-2">
-                <LineChart className="w-5 h-5 text-blue-600" />
-                Revenue Trend
-              </h4>
-              <div className="h-80">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={chartData}>
-                    <defs>
-                      <linearGradient
-                        id="colorRevenue"
-                        x1="0"
-                        y1="0"
-                        x2="0"
-                        y2="1"
-                      >
-                        <stop
-                          offset="5%"
-                          stopColor={colors.primary}
-                          stopOpacity={0.8}
-                        />
-                        <stop
-                          offset="95%"
-                          stopColor={colors.primary}
-                          stopOpacity={0.2}
-                        />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid
-                      strokeDasharray="3 3"
-                      className="opacity-30"
-                    />
-                    <XAxis
-                      dataKey="month"
-                      tick={{ fontSize: 12 }}
-                      tickLine={{ stroke: "#e5e7eb" }}
-                    />
-                    <YAxis
-                      tick={{ fontSize: 12 }}
-                      tickLine={{ stroke: "#e5e7eb" }}
-                      tickFormatter={(value) =>
-                        `₹${(value / 1000).toFixed(0)}K`
-                      }
-                    />
-                    <Tooltip
-                      formatter={formatTooltipValue}
-                      labelStyle={{ color: "#374151" }}
-                      contentStyle={{
-                        backgroundColor: "#f9fafb",
-                        border: "1px solid #e5e7eb",
-                        borderRadius: "8px",
-                      }}
-                    />
-                    <Area
-                      type="monotone"
-                      dataKey="revenue"
-                      stroke={colors.primary}
-                      strokeWidth={3}
-                      fillOpacity={1}
-                      fill="url(#colorRevenue)"
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-
-            {/* Jobs Volume Chart */}
-            <div className="space-y-4">
-              <h4 className="font-semibold text-lg flex items-center gap-2">
-                <BarChart3 className="w-5 h-5 text-green-600" />
-                Jobs Volume
-              </h4>
-              <div className="h-80">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={chartData}>
-                    <CartesianGrid
-                      strokeDasharray="3 3"
-                      className="opacity-30"
-                    />
-                    <XAxis
-                      dataKey="month"
-                      tick={{ fontSize: 12 }}
-                      tickLine={{ stroke: "#e5e7eb" }}
-                    />
-                    <YAxis
-                      tick={{ fontSize: 12 }}
-                      tickLine={{ stroke: "#e5e7eb" }}
-                    />
-                    <Tooltip
-                      formatter={formatTooltipValue}
-                      labelStyle={{ color: "#374151" }}
-                      contentStyle={{
-                        backgroundColor: "#f9fafb",
-                        border: "1px solid #e5e7eb",
-                        borderRadius: "8px",
-                      }}
-                    />
-                    <Bar
-                      dataKey="jobs"
-                      fill={colors.secondary}
-                      radius={[4, 4, 0, 0]}
-                    />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-
-            {/* Performance Metrics Pie Chart */}
-            <div className="space-y-4">
-              <h4 className="font-semibold text-lg flex items-center gap-2">
-                <PieChart className="w-5 h-5 text-purple-600" />
-                Performance Metrics
-              </h4>
-              <div className="h-80">
-                <ResponsiveContainer width="100%" height="100%">
-                  <RechartsPieChart>
-                    <Pie
-                      data={performanceData}
-                      cx="50%"
-                      cy="50%"
-                      labelLine={false}
-                      label={({ name, value }) => `${name}: ${value}%`}
-                      outerRadius={100}
-                      fill="#8884d8"
-                      dataKey="value"
-                    >
-                      {performanceData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.color} />
-                      ))}
-                    </Pie>
-                    <Tooltip
-                      formatter={(value: any) => [value + "%", "Performance"]}
-                      contentStyle={{
-                        backgroundColor: "#f9fafb",
-                        border: "1px solid #e5e7eb",
-                        borderRadius: "8px",
-                      }}
-                    />
-                  </RechartsPieChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-
-            {/* Efficiency Tracking */}
-            <div className="space-y-4">
-              <h4 className="font-semibold text-lg flex items-center gap-2">
-                <Activity className="w-5 h-5 text-orange-600" />
-                Efficiency Tracking
-              </h4>
-              <div className="h-80">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={chartData}>
-                    <defs>
-                      <linearGradient
-                        id="colorEfficiency"
-                        x1="0"
-                        y1="0"
-                        x2="0"
-                        y2="1"
-                      >
-                        <stop
-                          offset="5%"
-                          stopColor={colors.tertiary}
-                          stopOpacity={0.8}
-                        />
-                        <stop
-                          offset="95%"
-                          stopColor={colors.tertiary}
-                          stopOpacity={0.2}
-                        />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid
-                      strokeDasharray="3 3"
-                      className="opacity-30"
-                    />
-                    <XAxis
-                      dataKey="month"
-                      tick={{ fontSize: 12 }}
-                      tickLine={{ stroke: "#e5e7eb" }}
-                    />
-                    <YAxis
-                      tick={{ fontSize: 12 }}
-                      tickLine={{ stroke: "#e5e7eb" }}
-                      domain={[70, 100]}
-                    />
-                    <Tooltip
-                      formatter={formatTooltipValue}
-                      labelStyle={{ color: "#374151" }}
-                      contentStyle={{
-                        backgroundColor: "#f9fafb",
-                        border: "1px solid #e5e7eb",
-                        borderRadius: "8px",
-                      }}
-                    />
-                    <Area
-                      type="monotone"
-                      dataKey="efficiency"
-                      stroke={colors.tertiary}
-                      strokeWidth={3}
-                      fillOpacity={1}
-                      fill="url(#colorEfficiency)"
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Quick Actions */}
-      <Card className="card-shadow mb-6">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Zap className="h-5 w-5 text-primary" />
-            Quick Actions
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Link href="/job-sheet-form">
-              <Card className="h-full hover:shadow-lg transition-all duration-200 hover:scale-105 cursor-pointer border-primary/20 hover:border-primary/40">
-                <CardContent className="p-6">
-                  <div className="flex items-start gap-4">
-                    <div className="p-3 rounded-lg gradient-primary">
-                      <FileText className="w-6 h-6 text-white" />
-                    </div>
-                    <div className="flex-1">
-                      <h3 className="font-semibold mb-1">Create Job Sheet</h3>
-                      <p className="text-sm text-muted-foreground mb-3">
-                        Create a new job sheet for printing orders
-                      </p>
-                      <div className="flex items-center gap-1 text-sm text-primary font-medium">
-                        Get started <ArrowRight className="w-4 h-4" />
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </Link>
-
-            <Link href="/parties">
-              <Card className="h-full hover:shadow-lg transition-all duration-200 hover:scale-105 cursor-pointer border-success/20 hover:border-success/40">
-                <CardContent className="p-6">
-                  <div className="flex items-start gap-4">
-                    <div className="p-3 rounded-lg gradient-success">
-                      <Users className="w-6 h-6 text-white" />
-                    </div>
-                    <div className="flex-1">
-                      <h3 className="font-semibold mb-1">
-                        Party Balance Management
-                      </h3>
-                      <p className="text-sm text-muted-foreground mb-3">
-                        Manage customer balances and transactions
-                      </p>
-                      <div className="flex items-center gap-1 text-sm text-success font-medium">
-                        Manage parties <ArrowRight className="w-4 h-4" />
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </Link>
-
-            <Link href="/admin/job-sheet-form">
-              <Card className="h-full hover:shadow-lg transition-all duration-200 hover:scale-105 cursor-pointer border-warning/20 hover:border-warning/40">
-                <CardContent className="p-6">
-                  <div className="flex items-start gap-4">
-                    <div className="p-3 rounded-lg bg-warning">
-                      <BarChart3 className="w-6 h-6 text-white" />
-                    </div>
-                    <div className="flex-1">
-                      <h3 className="font-semibold mb-1">
-                        Analytics & Reports
-                      </h3>
-                      <p className="text-sm text-muted-foreground mb-3">
-                        View detailed performance analytics
-                      </p>
-                      <div className="flex items-center gap-1 text-sm text-warning font-medium">
-                        View analytics <ArrowRight className="w-4 h-4" />
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </Link>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Recent Activity */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Recent Job Sheets */}
-        <Card className="card-shadow">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle className="flex items-center gap-2">
-                <FileText className="h-5 w-5 text-primary" />
-                Recent Job Sheets
-              </CardTitle>
-              <Button variant="outline" size="sm" asChild>
-                <Link href="/admin/job-sheet-form">View All</Link>
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {stats.recentJobSheets.length === 0 ? (
-              <div className="text-center py-8">
-                <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                <p className="text-muted-foreground font-medium">
-                  No job sheets found
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  Create your first job sheet to get started
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {stats.recentJobSheets.map((job: any) => (
-                  <div
-                    key={job.id}
-                    className="flex items-center justify-between p-4 bg-muted/30 rounded-lg hover:bg-muted/50 transition-colors"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="h-2 w-2 rounded-full bg-success"></div>
-                      <div>
-                        <p className="font-medium">{job.party_name}</p>
-                        <p className="text-sm text-muted-foreground">
-                          {job.description || "No description"}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-semibold text-success">
-                        {formatCurrency(job.total_cost || 0)}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {new Date(job.created_at).toLocaleDateString()}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
             )}
-          </CardContent>
-        </Card>
+          </div>
 
-        {/* Network Status / Quick Stats */}
-        <Card className="card-shadow">
+          {/* Connection Status & Refresh */}
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              {connectionStatus === "online" ? (
+                <Wifi className="w-4 h-4 text-green-600" />
+              ) : connectionStatus === "slow" ? (
+                <Activity className="w-4 h-4 text-yellow-600" />
+              ) : (
+                <WifiOff className="w-4 h-4 text-red-600" />
+              )}
+              <span
+                className={`text-sm font-medium ${
+                  connectionStatus === "online"
+                    ? "text-green-600"
+                    : connectionStatus === "slow"
+                      ? "text-yellow-600"
+                      : "text-red-600"
+                }`}
+              >
+                {connectionStatus === "online"
+                  ? "Online"
+                  : connectionStatus === "slow"
+                    ? "Slow Connection"
+                    : "Offline"}
+              </span>
+            </div>
+
+            <Button
+              onClick={handleRefresh}
+              variant="outline"
+              size="sm"
+              disabled={
+                loading.parties && loading.transactions && loading.jobSheets
+              }
+            >
+              <RefreshCw
+                className={`w-4 h-4 mr-2 ${
+                  loading.parties || loading.transactions || loading.jobSheets
+                    ? "animate-spin"
+                    : ""
+                }`}
+              />
+              Refresh
+            </Button>
+
+            <div className="flex gap-2">
+              <Link href="/admin/job-sheet-form">
+                <Button className="bg-blue-600 hover:bg-blue-700 text-white">
+                  <Plus className="w-4 h-4 mr-2" />
+                  New Job Sheet
+                </Button>
+              </Link>
+              <Link href="/parties">
+                <Button variant="outline">
+                  <Building2 className="w-4 h-4 mr-2" />
+                  Manage Parties
+                </Button>
+              </Link>
+            </div>
+          </div>
+        </div>
+
+        {/* Main Stats Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          {/* Total Revenue */}
+          <Card className="bg-gradient-to-r from-green-500 to-green-600 text-white">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-green-100">
+                Total Revenue
+              </CardTitle>
+              <DollarSign className="h-4 w-4 text-green-200" />
+            </CardHeader>
+            <CardContent>
+              {loading.jobSheets ? (
+                <div className="animate-pulse">
+                  <div className="h-8 bg-green-400 rounded w-32 mb-2"></div>
+                  <div className="h-4 bg-green-400 rounded w-24"></div>
+                </div>
+              ) : (
+                <>
+                  <div className="text-2xl font-bold">
+                    {formatCurrency(stats.totalRevenue)}
+                  </div>
+                  <p className="text-xs text-green-100">
+                    {formatCurrency(stats.monthlyRevenue)} this month
+                  </p>
+                </>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Total Job Sheets */}
+          <Card className="bg-gradient-to-r from-blue-500 to-blue-600 text-white">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-blue-100">
+                Total Job Sheets
+              </CardTitle>
+              <FileText className="h-4 w-4 text-blue-200" />
+            </CardHeader>
+            <CardContent>
+              {loading.jobSheets ? (
+                <div className="animate-pulse">
+                  <div className="h-8 bg-blue-400 rounded w-16 mb-2"></div>
+                  <div className="h-4 bg-blue-400 rounded w-20"></div>
+                </div>
+              ) : (
+                <>
+                  <div className="text-2xl font-bold">
+                    {stats.totalJobSheets}
+                  </div>
+                  <p className="text-xs text-blue-100">
+                    {stats.pendingJobs} pending completion
+                  </p>
+                </>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Total Parties */}
+          <Card className="bg-gradient-to-r from-purple-500 to-purple-600 text-white">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-purple-100">
+                Active Parties
+              </CardTitle>
+              <Users className="h-4 w-4 text-purple-200" />
+            </CardHeader>
+            <CardContent>
+              {loading.parties ? (
+                <div className="animate-pulse">
+                  <div className="h-8 bg-purple-400 rounded w-16 mb-2"></div>
+                  <div className="h-4 bg-purple-400 rounded w-24"></div>
+                </div>
+              ) : (
+                <>
+                  <div className="text-2xl font-bold">{stats.totalParties}</div>
+                  <p className="text-xs text-purple-100">
+                    {formatCurrency(stats.totalBalance)} total balance
+                  </p>
+                </>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* ROI */}
+          <Card className="bg-gradient-to-r from-orange-500 to-orange-600 text-white">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-orange-100">
+                ROI
+              </CardTitle>
+              <Target className="h-4 w-4 text-orange-200" />
+            </CardHeader>
+            <CardContent>
+              {loading.jobSheets ? (
+                <div className="animate-pulse">
+                  <div className="h-8 bg-orange-400 rounded w-20 mb-2"></div>
+                  <div className="h-4 bg-orange-400 rounded w-16"></div>
+                </div>
+              ) : (
+                <>
+                  <div className="text-2xl font-bold">
+                    {stats.roi.toFixed(1)}%
+                  </div>
+                  <p className="text-xs text-orange-100">
+                    {formatCurrency(stats.grossProfit)} profit
+                  </p>
+                </>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Business Metrics Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+          {businessMetrics.map((metric, index) => (
+            <Card key={index} className="border border-gray-200">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium text-gray-600">
+                    {metric.metric}
+                  </span>
+                  <Badge
+                    variant={
+                      metric.current >= metric.target ? "default" : "secondary"
+                    }
+                  >
+                    {((metric.current / metric.target) * 100).toFixed(0)}%
+                  </Badge>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span
+                    className="text-2xl font-bold"
+                    style={{ color: metric.color }}
+                  >
+                    {metric.current}
+                  </span>
+                  <span className="text-sm text-gray-500">
+                    / {metric.target}
+                  </span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
+                  <div
+                    className="h-2 rounded-full transition-all duration-1000"
+                    style={{
+                      width: `${Math.min(100, (metric.current / metric.target) * 100)}%`,
+                      backgroundColor: metric.color,
+                    }}
+                  ></div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+
+        {/* Charts Section */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+          {/* Revenue Trend Chart */}
+          <Card className="shadow-lg">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <LineChart className="w-5 h-5 text-blue-600" />
+                Revenue & Efficiency Trend
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {loading.charts ? (
+                <div className="h-80 flex items-center justify-center">
+                  <div className="animate-pulse text-gray-500">
+                    Loading charts...
+                  </div>
+                </div>
+              ) : (
+                <div className="h-80">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <ComposedChart data={chartData}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="month" />
+                      <YAxis yAxisId="left" />
+                      <YAxis yAxisId="right" orientation="right" />
+                      <Tooltip formatter={formatTooltipValue} />
+                      <Legend />
+                      <Bar
+                        yAxisId="left"
+                        dataKey="revenue"
+                        fill="#3b82f6"
+                        name="Revenue"
+                      />
+                      <Line
+                        yAxisId="right"
+                        type="monotone"
+                        dataKey="efficiency"
+                        stroke="#10b981"
+                        strokeWidth={3}
+                        name="Efficiency %"
+                      />
+                    </ComposedChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Performance Metrics Chart */}
+          <Card className="shadow-lg">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <PieChart className="w-5 h-5 text-green-600" />
+                Performance Metrics
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {loading.charts ? (
+                <div className="h-80 flex items-center justify-center">
+                  <div className="animate-pulse text-gray-500">
+                    Loading metrics...
+                  </div>
+                </div>
+              ) : (
+                <div className="h-80">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <RechartsPieChart>
+                      <Pie
+                        data={performanceData}
+                        cx="50%"
+                        cy="50%"
+                        labelLine={false}
+                        label={({ name, value }) =>
+                          `${name}: ${value.toFixed(1)}%`
+                        }
+                        outerRadius={100}
+                        fill="#8884d8"
+                        dataKey="value"
+                      >
+                        {performanceData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        formatter={(value: any) => [
+                          `${value.toFixed(1)}%`,
+                          "Performance",
+                        ]}
+                      />
+                      <Legend />
+                    </RechartsPieChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Production Analytics */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+          {/* Jobs & Impressions Chart */}
+          <Card className="shadow-lg">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <BarChart3 className="w-5 h-5 text-purple-600" />
+                Production Volume
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {loading.charts ? (
+                <div className="h-80 flex items-center justify-center">
+                  <div className="animate-pulse text-gray-500">
+                    Loading production data...
+                  </div>
+                </div>
+              ) : (
+                <div className="h-80">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={chartData}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="month" />
+                      <YAxis />
+                      <Tooltip
+                        formatter={(value: any, name: string) => [
+                          formatNumber(value),
+                          name === "jobs" ? "Jobs" : "Impressions",
+                        ]}
+                      />
+                      <Legend />
+                      <Area
+                        type="monotone"
+                        dataKey="jobs"
+                        stackId="1"
+                        stroke="#8b5cf6"
+                        fill="#8b5cf6"
+                        fillOpacity={0.6}
+                        name="Jobs"
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="impressions"
+                        stackId="2"
+                        stroke="#06b6d4"
+                        fill="#06b6d4"
+                        fillOpacity={0.6}
+                        name="Impressions"
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Financial Summary */}
+          <Card className="shadow-lg">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <CreditCard className="w-5 h-5 text-indigo-600" />
+                Financial Summary
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="text-center p-4 bg-green-50 rounded-lg">
+                  <div className="text-2xl font-bold text-green-600">
+                    {formatCurrency(stats.totalPayments)}
+                  </div>
+                  <div className="text-sm text-green-700">Total Payments</div>
+                </div>
+                <div className="text-center p-4 bg-blue-50 rounded-lg">
+                  <div className="text-2xl font-bold text-blue-600">
+                    {formatCurrency(stats.totalOrders)}
+                  </div>
+                  <div className="text-sm text-blue-700">Total Orders</div>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm font-medium">Revenue Growth</span>
+                  <span className="text-sm font-bold text-green-600">
+                    +
+                    {performanceData
+                      .find((p) => p.name === "Revenue Growth")
+                      ?.value.toFixed(1) || 0}
+                    %
+                  </span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div
+                    className="bg-green-600 h-2 rounded-full transition-all duration-1000"
+                    style={{
+                      width: `${Math.min(100, performanceData.find((p) => p.name === "Revenue Growth")?.value || 0)}%`,
+                    }}
+                  ></div>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm font-medium">
+                    Customer Satisfaction
+                  </span>
+                  <span className="text-sm font-bold text-blue-600">
+                    {performanceData
+                      .find((p) => p.name === "Customer Retention")
+                      ?.value.toFixed(1) || 0}
+                    %
+                  </span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div
+                    className="bg-blue-600 h-2 rounded-full transition-all duration-1000"
+                    style={{
+                      width: `${performanceData.find((p) => p.name === "Customer Retention")?.value || 0}%`,
+                    }}
+                  ></div>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm font-medium">
+                    Production Quality
+                  </span>
+                  <span className="text-sm font-bold text-purple-600">
+                    {performanceData
+                      .find((p) => p.name === "Production Quality")
+                      ?.value.toFixed(1) || 0}
+                    %
+                  </span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div
+                    className="bg-purple-600 h-2 rounded-full transition-all duration-1000"
+                    style={{
+                      width: `${performanceData.find((p) => p.name === "Production Quality")?.value || 0}%`,
+                    }}
+                  ></div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Recent Activity */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+          {/* Recent Transactions */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <Activity className="w-5 h-5 text-blue-600" />
+                  Recent Transactions
+                </span>
+                <Link href="/parties">
+                  <Button variant="outline" size="sm">
+                    View All <ArrowRight className="w-4 h-4 ml-1" />
+                  </Button>
+                </Link>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {loading.transactions ? (
+                <div className="space-y-3">
+                  {[...Array(3)].map((_, i) => (
+                    <div
+                      key={i}
+                      className="animate-pulse flex items-center space-x-4"
+                    >
+                      <div className="w-10 h-10 bg-gray-300 rounded-full"></div>
+                      <div className="flex-1 space-y-2">
+                        <div className="h-4 bg-gray-300 rounded w-3/4"></div>
+                        <div className="h-3 bg-gray-300 rounded w-1/2"></div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : stats.recentTransactions.length > 0 ? (
+                <div className="space-y-4">
+                  {stats.recentTransactions.map((transaction, index) => (
+                    <div
+                      key={index}
+                      className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div
+                          className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                            transaction.type === "payment"
+                              ? "bg-green-100"
+                              : "bg-blue-100"
+                          }`}
+                        >
+                          {transaction.type === "payment" ? (
+                            <TrendingUp className="w-5 h-5 text-green-600" />
+                          ) : (
+                            <TrendingDown className="w-5 h-5 text-blue-600" />
+                          )}
+                        </div>
+                        <div>
+                          <div className="font-medium text-gray-900">
+                            {transaction.type === "payment"
+                              ? "Payment Received"
+                              : "New Order"}
+                          </div>
+                          <div className="text-sm text-gray-500">
+                            {transaction.description || "No description"}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div
+                          className={`font-bold ${
+                            transaction.type === "payment"
+                              ? "text-green-600"
+                              : "text-blue-600"
+                          }`}
+                        >
+                          {formatCurrency(transaction.amount)}
+                        </div>
+                        <div className="text-sm text-gray-500">
+                          {new Date(
+                            transaction.created_at
+                          ).toLocaleDateString()}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8 text-gray-500">
+                  <Activity className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+                  <p>No recent transactions</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Recent Job Sheets */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <FileText className="w-5 h-5 text-green-600" />
+                  Recent Job Sheets
+                </span>
+                <Link href="/admin">
+                  <Button variant="outline" size="sm">
+                    View All <ArrowRight className="w-4 h-4 ml-1" />
+                  </Button>
+                </Link>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {loading.jobSheets ? (
+                <div className="space-y-3">
+                  {[...Array(3)].map((_, i) => (
+                    <div
+                      key={i}
+                      className="animate-pulse flex items-center space-x-4"
+                    >
+                      <div className="w-10 h-10 bg-gray-300 rounded-full"></div>
+                      <div className="flex-1 space-y-2">
+                        <div className="h-4 bg-gray-300 rounded w-3/4"></div>
+                        <div className="h-3 bg-gray-300 rounded w-1/2"></div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : stats.recentJobSheets.length > 0 ? (
+                <div className="space-y-4">
+                  {stats.recentJobSheets.map((job, index) => (
+                    <div
+                      key={index}
+                      className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                          <FileText className="w-5 h-5 text-blue-600" />
+                        </div>
+                        <div>
+                          <div className="font-medium text-gray-900">
+                            {job.party_name || "Unknown Party"}
+                          </div>
+                          <div className="text-sm text-gray-500">
+                            {job.description || "No description"}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="font-bold text-blue-600">
+                          {formatCurrency(
+                            (job.printing || 0) +
+                              (job.uv || 0) +
+                              (job.baking || 0)
+                          )}
+                        </div>
+                        <div className="text-sm text-gray-500">
+                          {new Date(job.created_at).toLocaleDateString()}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8 text-gray-500">
+                  <FileText className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+                  <p>No recent job sheets</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Quick Actions */}
+        <Card className="mb-8">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Activity className="h-5 w-5 text-success" />
-              System Status
-              <Badge variant="secondary" className="bg-success/10 text-success">
-                ● Operational
-              </Badge>
+              <Zap className="w-5 h-5 text-yellow-600" />
+              Quick Actions
             </CardTitle>
-            <p className="text-sm text-muted-foreground">
-              Multi-system health and performance metrics
-            </p>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              {/* Job Processing Status */}
-              <div className="flex items-center justify-between p-3 rounded-lg bg-primary/5">
-                <div className="flex items-center gap-3">
-                  <div className="h-8 w-8 rounded-full bg-primary flex items-center justify-center">
-                    <FileText className="h-4 w-4 text-white" />
-                  </div>
-                  <div>
-                    <p className="font-medium">Job Processing</p>
-                    <p className="text-sm text-muted-foreground">Active</p>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <p className="font-semibold">{stats.totalJobSheets}</p>
-                  <p className="text-xs text-muted-foreground">Jobs</p>
-                </div>
-              </div>
-
-              {/* Party Management Status */}
-              <div className="flex items-center justify-between p-3 rounded-lg bg-success/5">
-                <div className="flex items-center gap-3">
-                  <div className="h-8 w-8 rounded-full bg-success flex items-center justify-center">
-                    <Users className="h-4 w-4 text-white" />
-                  </div>
-                  <div>
-                    <p className="font-medium">Party Management</p>
-                    <p className="text-sm text-muted-foreground">Active</p>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <p className="font-semibold">{stats.totalParties}</p>
-                  <p className="text-xs text-muted-foreground">Parties</p>
-                </div>
-              </div>
-
-              {/* Financial Status */}
-              <div className="flex items-center justify-between p-3 rounded-lg bg-warning/5">
-                <div className="flex items-center gap-3">
-                  <div className="h-8 w-8 rounded-full bg-warning flex items-center justify-center">
-                    <DollarSign className="h-4 w-4 text-white" />
-                  </div>
-                  <div>
-                    <p className="font-medium">Financial System</p>
-                    <p className="text-sm text-muted-foreground">Active</p>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <p className="font-semibold">
-                    {formatCurrency(stats.totalBalance)}
-                  </p>
-                  <p className="text-xs text-muted-foreground">Balance</p>
-                </div>
-              </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <Link href="/admin/job-sheet-form">
+                <Button className="w-full h-16 flex flex-col items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700">
+                  <Plus className="w-6 h-6" />
+                  <span className="text-sm">New Job Sheet</span>
+                </Button>
+              </Link>
+              <Link href="/parties">
+                <Button
+                  variant="outline"
+                  className="w-full h-16 flex flex-col items-center justify-center gap-2"
+                >
+                  <Building2 className="w-6 h-6" />
+                  <span className="text-sm">Manage Parties</span>
+                </Button>
+              </Link>
+              <Link href="/admin">
+                <Button
+                  variant="outline"
+                  className="w-full h-16 flex flex-col items-center justify-center gap-2"
+                >
+                  <BarChart3 className="w-6 h-6" />
+                  <span className="text-sm">View Reports</span>
+                </Button>
+              </Link>
+              <Button
+                variant="outline"
+                className="w-full h-16 flex flex-col items-center justify-center gap-2"
+                onClick={handleRefresh}
+              >
+                <RefreshCw
+                  className={`w-6 h-6 ${
+                    loading.parties || loading.transactions || loading.jobSheets
+                      ? "animate-spin"
+                      : ""
+                  }`}
+                />
+                <span className="text-sm">Refresh Data</span>
+              </Button>
             </div>
           </CardContent>
         </Card>
+
+        {/* Error Recovery */}
+        {(error || connectionStatus === "offline") && (
+          <Card className="border-red-200 bg-red-50">
+            <CardContent className="p-6">
+              <div className="flex items-center gap-3">
+                <AlertCircle className="w-6 h-6 text-red-600" />
+                <div>
+                  <h3 className="font-semibold text-red-800">
+                    Connection Issue
+                  </h3>
+                  <p className="text-red-700 text-sm">
+                    {error ||
+                      "Unable to connect to server. Showing cached data."}
+                  </p>
+                  {retryCount > 0 && (
+                    <p className="text-red-600 text-xs mt-1">
+                      Retry attempts: {retryCount}
+                    </p>
+                  )}
+                </div>
+                <Button
+                  onClick={handleRefresh}
+                  variant="outline"
+                  size="sm"
+                  className="ml-auto border-red-300 text-red-700 hover:bg-red-100"
+                >
+                  Try Again
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </div>
   );

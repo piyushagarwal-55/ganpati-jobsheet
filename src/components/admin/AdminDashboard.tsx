@@ -1,33 +1,34 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useQuotations } from "@/hooks/useQuotations";
+import { useJobSheets } from "@/hooks/useJobSheets";
 import {
   DashboardStats as DashboardStatsType,
   ChartData,
   Notification,
-  QuotationRequest,
+  JobSheet,
 } from "@/types/database";
 import { AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 import DashboardNavbar from "./DashboardNavbar";
 import DashboardStats from "./DashboardStats";
-import QuotationsTable from "./QuotationsTable";
-import QuotationDetailModal from "./QuotationDetailModal";
+import JobSheetsTable from "./JobSheetsTable";
+import RealTimeIndicators from "./RealTimeIndicators";
+import EnhancedDashboard from "./EnhancedDashboard";
 
 export default function EnhancedAdminDashboard() {
   const {
-    quotations,
+    jobSheets,
     notes,
     loading,
     error,
-    updateQuotationStatus,
-    updateQuotationPrice,
+    updateJobSheet,
+    deleteJobSheet,
     addNote,
-    generateInvoice,
-    deleteQuotation,
-  } = useQuotations();
+    generateReport,
+    softDeleteJobSheet,
+  } = useJobSheets();
 
   // State management
   const [notifications, setNotifications] = useState<Notification[]>(() => {
@@ -40,8 +41,8 @@ export default function EnhancedAdminDashboard() {
     return [
       {
         id: "1",
-        title: "New Quotation Request",
-        message: "A new quotation request has been submitted",
+        title: "New Job Sheet Created",
+        message: "A new job sheet has been created",
         type: "info",
         timestamp: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
         read: false,
@@ -58,162 +59,216 @@ export default function EnhancedAdminDashboard() {
   });
 
   const [stats, setStats] = useState<DashboardStatsType>({
-    totalQuotations: 0,
-    pendingQuotations: 0,
-    completedQuotations: 0,
-    inProgressQuotations: 0,
-    cancelledQuotations: 0,
+    totalJobSheets: 0,
+    totalParties: 0,
     totalRevenue: 0,
     avgOrderValue: 0,
-    thisMonthQuotations: 0,
-    lastMonthQuotations: 0,
+    thisMonthRevenue: 0,
+    lastMonthRevenue: 0,
     revenueGrowth: 0,
-    conversionRate: 0,
+    totalOrders: 0,
   });
 
+  const [parties, setParties] = useState<any[]>([]);
+  const [transactions, setTransactions] = useState<any[]>([]);
+
   const [chartData, setChartData] = useState<ChartData[]>([]);
-  const [selectedQuotation, setSelectedQuotation] =
-    useState<QuotationRequest | null>(null);
-  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [selectedJobSheet, setSelectedJobSheet] = useState<JobSheet | null>(
+    null
+  );
+  const [statusFilter, setStatusFilter] = useState("all");
   const [searchTerm, setSearchTerm] = useState("");
 
-  // Calculate dashboard statistics from real data
+  // Fetch parties and transactions data
   useEffect(() => {
-    if (quotations.length > 0) {
-      calculateStats(quotations);
-      generateChartData();
+    const fetchPartiesData = async () => {
+      try {
+        const [partiesResponse, transactionsResponse] = await Promise.all([
+          fetch("/api/parties"),
+          fetch("/api/parties/transactions"),
+        ]);
+
+        if (partiesResponse.ok && transactionsResponse.ok) {
+          const [partiesData, transactionsData] = await Promise.all([
+            partiesResponse.json(),
+            transactionsResponse.json(),
+          ]);
+
+          setParties(partiesData);
+          setTransactions(transactionsData);
+        }
+      } catch (error) {
+        console.error("Error fetching parties data:", error);
+      }
+    };
+
+    fetchPartiesData();
+  }, []);
+
+  // Calculate stats when job sheets, parties, or transactions data changes
+  useEffect(() => {
+    if (jobSheets.length > 0 || parties.length > 0 || transactions.length > 0) {
+      calculateStats(jobSheets, parties, transactions);
     }
-  }, [quotations]);
+  }, [jobSheets, parties, transactions]);
 
-  const calculateStats = (data: QuotationRequest[]) => {
-    const now = new Date();
-    const thisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0);
+  // Real-time data updates every 15 seconds
+  useEffect(() => {
+    const fetchRealtimeData = async () => {
+      try {
+        const response = await fetch("/api/dashboard/realtime");
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success) {
+            setStats(data.data.stats);
+            setChartData(data.data.charts.monthlyTrend);
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching realtime dashboard data:", error);
+      }
+    };
 
-    const totalQuotations = data.length;
-    const pendingQuotations = data.filter((q) => q.status === "pending").length;
-    const completedQuotations = data.filter(
-      (q) => q.status === "completed"
-    ).length;
-    const inProgressQuotations = data.filter(
-      (q) => q.status === "in-progress"
-    ).length;
-    const cancelledQuotations = data.filter(
-      (q) => q.status === "cancelled"
-    ).length;
+    // Fetch immediately
+    fetchRealtimeData();
 
-    const totalRevenue = data
-      .filter((q) => q.final_price && q.status === "completed")
-      .reduce((sum, q) => sum + (q.final_price || 0), 0);
+    // Auto-refresh every 15 seconds for real-time updates
+    const realtimeInterval = setInterval(fetchRealtimeData, 15000);
 
+    return () => clearInterval(realtimeInterval);
+  }, []);
+
+  const calculateStats = (
+    data: JobSheet[],
+    partiesData: any[] = [],
+    transactionsData: any[] = []
+  ) => {
+    // Calculate basic stats from job sheets
+    const totalJobSheets = data.length;
+    const totalRevenue = data.reduce((sum, sheet) => {
+      return (
+        sum + ((sheet.printing || 0) + (sheet.uv || 0) + (sheet.baking || 0))
+      );
+    }, 0);
+
+    // Add transaction revenue
+    const transactionRevenue = transactionsData
+      .filter((t) => t.type === "payment")
+      .reduce((sum, t) => sum + (t.amount || 0), 0);
+
+    const combinedRevenue = totalRevenue + transactionRevenue;
     const avgOrderValue =
-      completedQuotations > 0 ? totalRevenue / completedQuotations : 0;
+      totalJobSheets > 0 ? combinedRevenue / totalJobSheets : 0;
 
-    const thisMonthQuotations = data.filter(
-      (q) => q.created_at && new Date(q.created_at) >= thisMonth
-    ).length;
+    // This month's data
+    const thisMonth = new Date();
+    thisMonth.setDate(1);
+    const thisMonthData = data.filter((sheet) => {
+      return new Date(sheet.job_date) >= thisMonth;
+    });
+    const thisMonthRevenue = thisMonthData.reduce((sum, sheet) => {
+      return (
+        sum + ((sheet.printing || 0) + (sheet.uv || 0) + (sheet.baking || 0))
+      );
+    }, 0);
 
-    const lastMonthQuotations = data.filter(
-      (q) =>
-        q.created_at &&
-        new Date(q.created_at) >= lastMonth &&
-        new Date(q.created_at) <= endOfLastMonth
-    ).length;
+    // Last month's data
+    const lastMonth = new Date();
+    lastMonth.setMonth(lastMonth.getMonth() - 1);
+    lastMonth.setDate(1);
+    const nextMonth = new Date(lastMonth);
+    nextMonth.setMonth(nextMonth.getMonth() + 1);
+
+    const lastMonthData = data.filter((sheet) => {
+      const sheetDate = new Date(sheet.job_date);
+      return sheetDate >= lastMonth && sheetDate < nextMonth;
+    });
+    const lastMonthRevenue = lastMonthData.reduce((sum, sheet) => {
+      return (
+        sum + ((sheet.printing || 0) + (sheet.uv || 0) + (sheet.baking || 0))
+      );
+    }, 0);
 
     const revenueGrowth =
-      lastMonthQuotations > 0
-        ? ((thisMonthQuotations - lastMonthQuotations) / lastMonthQuotations) *
-          100
+      lastMonthRevenue > 0
+        ? ((thisMonthRevenue - lastMonthRevenue) / lastMonthRevenue) * 100
         : 0;
 
-    const conversionRate =
-      totalQuotations > 0 ? (completedQuotations / totalQuotations) * 100 : 0;
-
     setStats({
-      totalQuotations,
-      pendingQuotations,
-      completedQuotations,
-      inProgressQuotations,
-      cancelledQuotations,
-      totalRevenue,
+      totalJobSheets,
+      totalParties: partiesData.length,
+      totalRevenue: combinedRevenue,
       avgOrderValue,
-      thisMonthQuotations,
-      lastMonthQuotations,
+      thisMonthRevenue,
+      lastMonthRevenue,
       revenueGrowth,
-      conversionRate,
+      totalOrders: totalJobSheets,
     });
-  };
 
-  const generateChartData = () => {
-    const months = [];
-    const now = new Date();
-    for (let i = 5; i >= 0; i--) {
-      const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const monthStart = new Date(date.getFullYear(), date.getMonth(), 1);
-      const monthEnd = new Date(date.getFullYear(), date.getMonth() + 1, 0);
+    // Generate chart data
+    const chartData: ChartData[] = [];
+    for (let i = 11; i >= 0; i--) {
+      const month = new Date();
+      month.setMonth(month.getMonth() - i);
+      const monthStart = new Date(month.getFullYear(), month.getMonth(), 1);
+      const monthEnd = new Date(month.getFullYear(), month.getMonth() + 1, 0);
 
-      const monthQuotations = quotations.filter((q) => {
-        if (!q.created_at) return false;
-        const createdDate = new Date(q.created_at);
-        return createdDate >= monthStart && createdDate <= monthEnd;
+      const monthJobSheets = data.filter((sheet) => {
+        const sheetDate = new Date(sheet.job_date);
+        return sheetDate >= monthStart && sheetDate <= monthEnd;
       });
 
-      const monthRevenue = monthQuotations
-        .filter((q) => q.final_price && q.status === "completed")
-        .reduce((sum, q) => sum + (q.final_price || 0), 0);
+      const monthRevenue = monthJobSheets.reduce((sum, sheet) => {
+        return (
+          sum + ((sheet.printing || 0) + (sheet.uv || 0) + (sheet.baking || 0))
+        );
+      }, 0);
 
-      months.push({
-        month: date.toLocaleDateString("en-US", { month: "short" }),
-        quotations: monthQuotations.length,
+      chartData.push({
+        month: month.toLocaleDateString("en-US", { month: "short" }),
+        jobSheets: monthJobSheets.length,
         revenue: monthRevenue,
       });
     }
-    setChartData(months);
+    setChartData(chartData);
   };
 
-  const markNotificationAsRead = (notificationId: string) => {
+  const markNotificationAsRead = (id: string) => {
     setNotifications((prev) => {
-      const updated = prev.map((n) =>
-        n.id === notificationId ? { ...n, read: true } : n
+      const updated = prev.map((notif) =>
+        notif.id === id ? { ...notif, read: true } : notif
       );
-      if (typeof window !== "undefined") {
-        localStorage.setItem("admin-notifications", JSON.stringify(updated));
-      }
+      localStorage.setItem("admin-notifications", JSON.stringify(updated));
       return updated;
     });
   };
 
-  // Show loading state
+  const handleRefresh = async () => {
+    // Refresh job sheets data
+    window.location.reload();
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-gray-900 mx-auto mb-4"></div>
-          <h2 className="text-xl font-semibold text-gray-700 mb-2">
-            Loading Dashboard
-          </h2>
-          <p className="text-gray-500">
-            Please wait while we fetch your data from the database...
-          </p>
+          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-primary mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading dashboard...</p>
         </div>
       </div>
     );
   }
 
-  // Show error state
   if (error) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
-          <h2 className="text-xl font-semibold text-gray-700 mb-2">
-            Database Connection Error
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">
+            Error Loading Dashboard
           </h2>
-          <p className="text-gray-500 mb-4">{error}</p>
-          <Button onClick={() => window.location.reload()}>
-            Retry Connection
-          </Button>
+          <p className="text-gray-600 mb-4">{error}</p>
+          <Button onClick={handleRefresh}>Try Again</Button>
         </div>
       </div>
     );
@@ -228,33 +283,23 @@ export default function EnhancedAdminDashboard() {
         setSearchTerm={setSearchTerm}
       />
 
-      <div className="container mx-auto px-4 py-8">
-        <DashboardStats stats={stats} chartData={chartData} />
+      <div className="container mx-auto px-4 py-8 space-y-8">
+        <EnhancedDashboard stats={stats} chartData={chartData} />
 
-        <QuotationsTable
-          quotations={quotations}
+        <JobSheetsTable
+          jobSheets={jobSheets}
           notes={notes}
-          statusFilter={statusFilter}
-          setStatusFilter={setStatusFilter}
           searchTerm={searchTerm}
-          updateQuotationStatus={updateQuotationStatus}
-          updateQuotationPrice={updateQuotationPrice}
+          dateFilter={statusFilter}
+          setDateFilter={setStatusFilter}
+          updateJobSheet={updateJobSheet}
+          deleteJobSheet={deleteJobSheet}
           addNote={addNote}
-          generateInvoice={generateInvoice}
-          deleteQuotation={deleteQuotation}
-          setSelectedQuotation={setSelectedQuotation}
+          generateReport={generateReport}
+          setSelectedJobSheet={setSelectedJobSheet}
+          onRefresh={handleRefresh}
+          softDeleteJobSheet={softDeleteJobSheet}
         />
-
-        {selectedQuotation && (
-          <QuotationDetailModal
-            quotation={selectedQuotation}
-            notes={notes}
-            onClose={() => setSelectedQuotation(null)}
-            updateQuotationPrice={updateQuotationPrice}
-            addNote={addNote}
-            generateInvoice={generateInvoice}
-          />
-        )}
       </div>
     </div>
   );

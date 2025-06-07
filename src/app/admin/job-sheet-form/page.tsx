@@ -23,28 +23,28 @@ export default async function AdminJobSheetPage() {
 
   if (!isAuthenticated) {
     return (
-      <div className="mt-16 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 flex items-center justify-center p-4">
         <div className="w-full max-w-md">
           {/* Header Section */}
           <div className="text-center mb-8">
-            <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-blue-600 to-purple-700 rounded-xl shadow-lg mb-6">
-              <Shield className="w-8 h-8 text-white" />
+            <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-xl shadow-sm mb-6 border border-blue-200">
+              <BarChart3 className="w-8 h-8 text-blue-600" />
             </div>
-            <h1 className="text-2xl font-bold text-gray-900 mb-2">
-              Admin Dashboard
+            <h1 className="text-2xl font-bold text-gray-800 mb-2">
+              Reports Dashboard
             </h1>
             <p className="text-gray-600">
-              Secure access to job sheet management platform
+              Access comprehensive business reports and analytics
             </p>
           </div>
 
           {/* Authentication Card */}
-          <Card className="shadow-xl border-0 bg-white/80 backdrop-blur-sm">
+          <Card className="shadow-lg border border-gray-200 bg-white/90 backdrop-blur-sm">
             <CardHeader className="text-center pb-6">
-              <div className="flex items-center justify-center w-12 h-12 bg-gray-100 rounded-lg mb-4 mx-auto">
-                <Lock className="w-5 h-5 text-gray-700" />
+              <div className="flex items-center justify-center w-12 h-12 bg-gray-50 rounded-lg mb-4 mx-auto border border-gray-200">
+                <Lock className="w-5 h-5 text-gray-600" />
               </div>
-              <CardTitle className="text-xl font-semibold text-gray-900">
+              <CardTitle className="text-xl font-semibold text-gray-800">
                 Secure Access
               </CardTitle>
               <p className="text-sm text-gray-600 mt-2">
@@ -66,15 +66,15 @@ export default async function AdminJobSheetPage() {
                     type="password"
                     placeholder="Enter your admin passcode"
                     required
-                    className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500 rounded-lg transition-colors"
+                    className="h-11 border-gray-200 focus:border-blue-400 focus:ring-blue-400 focus:ring-2 focus:ring-opacity-20 rounded-lg transition-all"
                   />
                 </div>
 
                 <Button
                   type="submit"
-                  className="w-full h-11 bg-gradient-to-r from-blue-600 to-purple-700 hover:from-blue-700 hover:to-purple-800 text-white font-medium rounded-lg shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-[1.02]"
+                  className="w-full h-11 bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white font-medium rounded-lg shadow-md hover:shadow-lg transition-all duration-200"
                 >
-                  Access Admin Dashboard
+                  Access Reports Dashboard
                 </Button>
               </form>
             </CardContent>
@@ -83,39 +83,37 @@ export default async function AdminJobSheetPage() {
           {/* Features Section */}
           <div className="grid grid-cols-3 gap-4 mt-8">
             <div className="text-center">
-              <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center mx-auto mb-2">
-                <FileText className="w-5 h-5 text-blue-600" />
+              <div className="w-10 h-10 bg-blue-50 rounded-lg flex items-center justify-center mx-auto mb-2 border border-blue-100">
+                <FileText className="w-5 h-5 text-blue-500" />
               </div>
-              <p className="text-xs text-gray-600 font-medium">
-                Job Management
-              </p>
+              <p className="text-xs text-gray-600 font-medium">Job Reports</p>
             </div>
             <div className="text-center">
-              <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center mx-auto mb-2">
-                <TrendingUp className="w-5 h-5 text-green-600" />
+              <div className="w-10 h-10 bg-green-50 rounded-lg flex items-center justify-center mx-auto mb-2 border border-green-100">
+                <TrendingUp className="w-5 h-5 text-green-500" />
               </div>
               <p className="text-xs text-gray-600 font-medium">Analytics</p>
             </div>
             <div className="text-center">
-              <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center mx-auto mb-2">
-                <BarChart3 className="w-5 h-5 text-purple-600" />
+              <div className="w-10 h-10 bg-purple-50 rounded-lg flex items-center justify-center mx-auto mb-2 border border-purple-100">
+                <BarChart3 className="w-5 h-5 text-purple-500" />
               </div>
-              <p className="text-xs text-gray-600 font-medium">Reports</p>
+              <p className="text-xs text-gray-600 font-medium">Insights</p>
             </div>
           </div>
 
           {/* Security Notice */}
-          <div className="mt-8 p-4 bg-gray-50 rounded-lg border border-gray-200">
+          <div className="mt-8 p-4 bg-white rounded-lg border border-gray-200 shadow-sm">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 bg-gray-200 rounded-lg flex items-center justify-center">
-                <Settings className="w-4 h-4 text-gray-600" />
+              <div className="w-8 h-8 bg-gray-50 rounded-lg flex items-center justify-center border border-gray-200">
+                <Shield className="w-4 h-4 text-gray-600" />
               </div>
               <div>
-                <h4 className="text-sm font-semibold text-gray-900">
-                  Enterprise Security
+                <h4 className="text-sm font-semibold text-gray-800">
+                  Secure Access
                 </h4>
                 <p className="text-xs text-gray-600">
-                  Protected by military-grade encryption protocols
+                  Your data is protected with advanced security measures
                 </p>
               </div>
             </div>
@@ -126,18 +124,8 @@ export default async function AdminJobSheetPage() {
   }
 
   return (
-    <div className="">
-      <div className="container">
-        {/* Enhanced Header for Authenticated State */}
-
-        {/* Enhanced Dashboard Container */}
-        <Card className="overflow-hidden">
-          
-          <CardContent className="">
-            <JobSheetAdminDashboard />
-          </CardContent>
-        </Card>
-      </div>
+    <div className="min-h-screen bg-white">
+      <JobSheetAdminDashboard />
     </div>
   );
 }

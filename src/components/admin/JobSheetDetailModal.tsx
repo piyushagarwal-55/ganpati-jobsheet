@@ -1,19 +1,19 @@
 "use client";
 
 import { useState } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "@/components/ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   FileText,
   Calendar,
@@ -74,7 +74,7 @@ export default function JobSheetDetailModal({
   const [newNote, setNewNote] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
-  const jobSheetNotes = notes.filter(
+  const jobSheetNotes = (notes || []).filter(
     (note) => note.job_sheet_id === jobSheet.id
   );
 
@@ -91,7 +91,7 @@ export default function JobSheetDetailModal({
   const formatBalance = (balance: number | null | undefined): string => {
     return balance != null ? `₹${balance.toFixed(2)}` : "₹0.00";
   };
-  
+
   const formatDate = (dateString: string | null) => {
     if (!dateString) return "Not set";
     return new Date(dateString).toLocaleDateString("en-IN", {

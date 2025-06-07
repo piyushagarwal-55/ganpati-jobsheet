@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { submitQuotationAction } from "@/app/actions";
+import { submitJobSheetAction } from "@/app/actions";
 
 export default function TestJobSheet() {
   const [result, setResult] = useState<any>(null);
@@ -13,28 +13,24 @@ export default function TestJobSheet() {
     setResult(null);
 
     const testData = {
-      clientName: "John Doe",
-      clientEmail: "john@example.com",
-      clientPhone: "+91-9876543210",
-      companyName: "Test Company",
-      projectTitle: "Test Brochure",
-      projectDescription: "Marketing brochure for company",
-      printType: "brochures",
-      paperType: "glossy",
-      paperSize: "a4",
-      quantity: "500",
-      pages: "8",
-      colorType: "full-color",
-      bindingType: "saddle-stitch",
-      lamination: "gloss",
-      folding: "none",
-      cutting: "standard",
+      job_date: new Date().toISOString().split("T")[0],
+      party_name: "Test Party",
+      description: "Test Job Sheet",
+      plate: "2",
+      size: "A4",
+      sq_inch: "93.5",
+      paper_sheet: "100",
+      imp: "1000",
+      rate: "10.0",
+      printing: "500.0",
+      uv: "0.0",
+      baking: "0.0",
     };
 
     console.log("Testing with data:", testData);
 
     try {
-      const response = await submitQuotationAction(testData);
+      const response = await submitJobSheetAction(testData);
       console.log("Test response:", response);
       setResult(response);
     } catch (error) {

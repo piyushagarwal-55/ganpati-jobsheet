@@ -261,7 +261,7 @@ export default function JobSheetDashboardNavbar({
                   onClick={() => (window.location.href = "/admin")}
                 >
                   <Home className="w-4 h-4 mr-2" />
-                  Quotations Dashboard
+                  Job Sheets Dashboard
                 </Button>
                 <Button
                   variant="ghost"

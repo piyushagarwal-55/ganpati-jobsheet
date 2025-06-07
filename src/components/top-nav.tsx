@@ -63,7 +63,7 @@ export function TopNav() {
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container flex h-16 items-center px-4">
         {/* Logo and Brand - Left Side */}
-        <div className="flex items-center gap-3 flex-shrink-0">
+        {/* <div className="flex items-center gap-3 flex-shrink-0">
           <Link href="/" className="flex items-center gap-3">
             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary shadow-sm">
               <Building2 className="h-5 w-5 text-primary-foreground" />
@@ -77,7 +77,7 @@ export function TopNav() {
               </span>
             </div>
           </Link>
-        </div>
+        </div> */}
 
         {/* Centered Desktop Navigation */}
         <div className="flex-1 flex justify-center">

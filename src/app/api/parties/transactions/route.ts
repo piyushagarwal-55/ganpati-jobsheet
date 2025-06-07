@@ -9,16 +9,18 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const partyId = searchParams.get("party_id");
 
+    // Simplified query for better performance
     let query = supabase
       .from("party_transactions")
       .select(
         `
-        *,
+        id, party_id, type, amount, description, balance_after, created_at,
         party:parties(name)
       `
       )
       .or("is_deleted.is.null,is_deleted.eq.false")
-      .order("created_at", { ascending: false });
+      .order("created_at", { ascending: false })
+      .limit(200); // Limit for performance
 
     if (partyId) {
       query = query.eq("party_id", partyId);
@@ -27,20 +29,25 @@ export async function GET(request: NextRequest) {
     const { data: transactions, error } = await query;
 
     if (error) {
-      console.error("Error fetching transactions:", error);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // Transform the data to include party_name for easier access
-    const transformedTransactions =
-      transactions?.map((transaction) => ({
-        ...transaction,
-        party_name: transaction.party?.name || "Unknown Party",
-      })) || [];
+    // Transform transactions to include party_name
+    const transformedTransactions = (transactions || []).map((transaction) => ({
+      ...transaction,
+      party_name: transaction.party?.name || "Unknown Party",
+    }));
 
-    return NextResponse.json(transformedTransactions);
+    const response = NextResponse.json(transformedTransactions);
+
+    // Add caching headers for better performance
+    response.headers.set(
+      "Cache-Control",
+      "public, max-age=30, stale-while-revalidate=120"
+    );
+
+    return response;
   } catch (error: any) {
-    console.error("Exception in GET /api/parties/transactions:", error);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

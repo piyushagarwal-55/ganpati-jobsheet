@@ -1,4 +1,4 @@
-import AdminDashboard from "@/components/admin-dashboard";
+import AdminDashboard from "@/components/admin/AdminDashboard";
 import { adminAuthAction } from "@/app/actions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
