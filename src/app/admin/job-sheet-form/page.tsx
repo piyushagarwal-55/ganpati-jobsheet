@@ -23,7 +23,7 @@ export default async function AdminJobSheetPage() {
 
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="flex items-center justify-center min-h-[70vh] py-8">
         <div className="w-full max-w-md">
           {/* Header Section */}
           <div className="text-center mb-8">
