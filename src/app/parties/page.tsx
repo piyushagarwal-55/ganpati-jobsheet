@@ -98,6 +98,11 @@ export default function PartiesPage() {
   const [editingParty, setEditingParty] = useState<Party | null>(null);
   const [selectedParty, setSelectedParty] = useState<Party | null>(null);
   const [deletePartyId, setDeletePartyId] = useState<number | null>(null);
+  const [deleteTransactionId, setDeleteTransactionId] = useState<number | null>(
+    null
+  );
+  const [transactionPassword, setTransactionPassword] = useState("");
+  const [deletionType, setDeletionType] = useState<"soft" | "hard">("soft");
   const [newPartyName, setNewPartyName] = useState("");
   const [transactionAmount, setTransactionAmount] = useState("");
   const [transactionDescription, setTransactionDescription] = useState("");
@@ -188,10 +193,10 @@ export default function PartiesPage() {
     if (isAuthenticated) {
       loadPartiesData();
 
-      // Auto-refresh every 30 seconds
+      // Auto-refresh every 3 minutes (reduced frequency)
       const interval = setInterval(() => {
         loadPartiesData(true);
-      }, 30000);
+      }, 180000);
 
       return () => clearInterval(interval);
     }
@@ -199,7 +204,10 @@ export default function PartiesPage() {
 
   const calculateDashboardStats = useCallback(
     (partiesData: Party[], transactionsData: Transaction[]) => {
-      const activeTransactions = transactionsData.filter((t) => !t.is_deleted);
+      // Filter out soft-deleted transactions (those with [DELETED] in description)
+      const activeTransactions = transactionsData.filter(
+        (t) => !t.description?.includes("[DELETED]")
+      );
 
       const totalBalance = partiesData.reduce(
         (sum, party) => sum + (party.balance || 0),
@@ -221,18 +229,19 @@ export default function PartiesPage() {
       const activePartyIds = new Set(recentTransactions.map((t) => t.party_id));
       const activeParties = activePartyIds.size;
 
-      const lastMonth = new Date();
-      lastMonth.setMonth(lastMonth.getMonth() - 1);
+      // Calculate current month and last month properly
+      const now = new Date();
+      const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+      const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const lastMonthEnd = new Date(currentMonthStart.getTime() - 1);
 
       const thisMonthTransactions = activeTransactions.filter(
-        (t) => new Date(t.created_at) >= lastMonth
+        (t) => new Date(t.created_at) >= currentMonthStart
       );
-      const lastMonthStart = new Date(lastMonth);
-      lastMonthStart.setMonth(lastMonthStart.getMonth() - 1);
 
       const lastMonthTransactions = activeTransactions.filter((t) => {
         const transDate = new Date(t.created_at);
-        return transDate >= lastMonthStart && transDate < lastMonth;
+        return transDate >= lastMonthStart && transDate <= lastMonthEnd;
       });
 
       const thisMonthRevenue = thisMonthTransactions.reduce(
@@ -285,13 +294,26 @@ export default function PartiesPage() {
 
   const recentTransactions = useMemo(() => {
     return transactions
-      .filter((t) => !t.is_deleted)
       .sort(
         (a, b) =>
           new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
       )
       .slice(0, 10);
   }, [transactions]);
+
+  const allTransactions = useMemo(() => {
+    const currentPartyIds = new Set(parties.map((p) => p.id));
+    return transactions
+      .map((t) => ({
+        ...t,
+        party_deleted: !currentPartyIds.has(t.party_id),
+      }))
+      .sort(
+        (a, b) =>
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      )
+      .slice(0, 20);
+  }, [transactions, parties]);
 
   const handlePasswordSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -385,6 +407,84 @@ export default function PartiesPage() {
       await loadPartiesData();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to delete party");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteTransaction = async () => {
+    // Validate password first
+    if (!transactionPassword.trim()) {
+      setError("Please enter the secure password");
+      return;
+    }
+
+    if (transactionPassword !== SECURE_PASSWORD) {
+      setError("Invalid password. Please try again.");
+      return;
+    }
+
+    if (!deleteTransactionId) {
+      setError("No transaction selected for deletion");
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      let response;
+
+      if (deletionType === "hard") {
+        // Hard delete - permanently remove
+        response = await fetch(`/api/transactions/${deleteTransactionId}`, {
+          method: "DELETE",
+        });
+      } else {
+        // Soft delete - mark as deleted with description
+        const currentTransaction = transactions.find(
+          (t) => t.id === deleteTransactionId
+        );
+        const originalDescription =
+          currentTransaction?.description || "Transaction";
+
+        // Check if already soft deleted
+        if (originalDescription.includes("[DELETED]")) {
+          setError(
+            "This transaction is already soft deleted. Use hard delete to permanently remove it."
+          );
+          setLoading(false);
+          return;
+        }
+
+        response = await fetch(`/api/transactions/${deleteTransactionId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            description: `[DELETED] ${new Date().toLocaleDateString()} - ${originalDescription}`,
+            soft_delete: true,
+          }),
+        });
+      }
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to delete transaction");
+      }
+
+      // Success - reset form and refresh data
+      setDeleteTransactionId(null);
+      setTransactionPassword("");
+      setDeletionType("soft");
+      setError(null);
+
+      // Add a small delay to ensure database changes are committed
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      await loadPartiesData(true); // Force refresh
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to delete transaction"
+      );
     } finally {
       setLoading(false);
     }
@@ -869,9 +969,9 @@ export default function PartiesPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                {recentTransactions.length > 0 ? (
+                {allTransactions.length > 0 ? (
                   <div className="space-y-4">
-                    {recentTransactions.map((transaction) => (
+                    {allTransactions.map((transaction) => (
                       <div
                         key={transaction.id}
                         className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
@@ -896,8 +996,11 @@ export default function PartiesPage() {
                           </div>
                           <div>
                             <div className="flex items-center gap-2">
-                              <span className="font-semibold text-gray-900">
+                              <span
+                                className={`font-semibold ${transaction.party_deleted ? "text-gray-500 line-through" : "text-gray-900"}`}
+                              >
                                 {transaction.party_name}
+                                {transaction.party_deleted && " (Deleted)"}
                               </span>
                               <Badge
                                 variant={
@@ -910,8 +1013,23 @@ export default function PartiesPage() {
                                 {transaction.type.toUpperCase()}
                               </Badge>
                             </div>
-                            <div className="text-sm text-gray-600">
-                              {transaction.description || "No description"}
+                            <div
+                              className={`text-sm ${
+                                transaction.description?.includes("[DELETED]")
+                                  ? "text-red-500 line-through"
+                                  : "text-gray-600"
+                              }`}
+                            >
+                              {transaction.description
+                                ?.replace("[DELETED]", "")
+                                .trim() || "No description"}
+                              {transaction.description?.includes(
+                                "[DELETED]"
+                              ) && (
+                                <span className="text-red-600 font-medium ml-2">
+                                  [DELETED]
+                                </span>
+                              )}
                             </div>
                             <div className="text-xs text-gray-500">
                               {new Date(
@@ -924,22 +1042,49 @@ export default function PartiesPage() {
                             </div>
                           </div>
                         </div>
-                        <div className="text-right">
-                          <div
-                            className={`text-lg font-bold ${
-                              transaction.type === "payment"
-                                ? "text-green-600"
-                                : transaction.type === "order"
-                                  ? "text-blue-600"
-                                  : "text-yellow-600"
+                        <div className="text-right flex items-center gap-2">
+                          <div>
+                            <div
+                              className={`text-lg font-bold ${
+                                transaction.description?.includes("[DELETED]")
+                                  ? "text-red-500 line-through"
+                                  : transaction.type === "payment"
+                                    ? "text-green-600"
+                                    : transaction.type === "order"
+                                      ? "text-blue-600"
+                                      : "text-yellow-600"
+                              }`}
+                            >
+                              {transaction.type === "payment" ? "+" : "-"}
+                              {formatCurrency(Math.abs(transaction.amount))}
+                            </div>
+                            <div className="text-sm text-gray-500">
+                              Balance:{" "}
+                              {formatCurrency(transaction.balance_after)}
+                            </div>
+                          </div>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setDeleteTransactionId(transaction.id);
+                              // If transaction is soft deleted, default to hard delete
+                              if (
+                                transaction.description?.includes("[DELETED]")
+                              ) {
+                                setDeletionType("hard");
+                              } else {
+                                setDeletionType("soft");
+                              }
+                            }}
+                            className={`${
+                              transaction.description?.includes("[DELETED]")
+                                ? "text-orange-600 border-orange-200 hover:bg-orange-50"
+                                : "text-red-600 border-red-200 hover:bg-red-50"
                             }`}
                           >
-                            {transaction.type === "payment" ? "+" : "-"}
-                            {formatCurrency(Math.abs(transaction.amount))}
-                          </div>
-                          <div className="text-sm text-gray-500">
-                            Balance: {formatCurrency(transaction.balance_after)}
-                          </div>
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
                         </div>
                       </div>
                     ))}
@@ -1148,6 +1293,149 @@ export default function PartiesPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Delete Transaction Dialog */}
+      <Dialog
+        open={deleteTransactionId !== null}
+        onOpenChange={() => {
+          setDeleteTransactionId(null);
+          setTransactionPassword("");
+          setDeletionType("soft");
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete Transaction</DialogTitle>
+            <DialogDescription>
+              {deleteTransactionId &&
+              transactions
+                .find((t) => t.id === deleteTransactionId)
+                ?.description?.includes("[DELETED]")
+                ? "This transaction is already soft deleted. You can permanently remove it with hard delete."
+                : "Choose deletion type and enter the secure password to proceed."}
+            </DialogDescription>
+          </DialogHeader>
+
+          {error && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-red-500" />
+                <span className="text-sm text-red-700">{error}</span>
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-4">
+            <div>
+              <Label>Deletion Type</Label>
+              <div className="grid grid-cols-1 gap-3 mt-2">
+                {!(
+                  deleteTransactionId &&
+                  transactions
+                    .find((t) => t.id === deleteTransactionId)
+                    ?.description?.includes("[DELETED]")
+                ) && (
+                  <div
+                    className={`p-3 border rounded-lg cursor-pointer transition-colors ${
+                      deletionType === "soft"
+                        ? "border-blue-500 bg-blue-50"
+                        : "border-gray-200 hover:bg-gray-50"
+                    }`}
+                    onClick={() => setDeletionType("soft")}
+                  >
+                    <div className="flex items-start gap-2">
+                      <input
+                        type="radio"
+                        checked={deletionType === "soft"}
+                        onChange={() => setDeletionType("soft")}
+                        className="text-blue-600 mt-0.5"
+                      />
+                      <div>
+                        <div className="font-medium text-sm">
+                          Soft Delete (Recommended)
+                        </div>
+                        <div className="text-xs text-gray-600">
+                          Mark as deleted but keep record. Shows as crossed out.
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <div
+                  className={`p-3 border rounded-lg cursor-pointer transition-colors ${
+                    deletionType === "hard"
+                      ? "border-red-500 bg-red-50"
+                      : "border-gray-200 hover:bg-gray-50"
+                  }`}
+                  onClick={() => setDeletionType("hard")}
+                >
+                  <div className="flex items-start gap-2">
+                    <input
+                      type="radio"
+                      checked={deletionType === "hard"}
+                      onChange={() => setDeletionType("hard")}
+                      className="text-red-600 mt-0.5"
+                    />
+                    <div>
+                      <div className="font-medium text-sm text-red-700">
+                        Hard Delete (Permanent)
+                      </div>
+                      <div className="text-xs text-red-600">
+                        Permanently remove from database. Cannot be undone.
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <Label htmlFor="transaction-password">Secure Password</Label>
+              <Input
+                id="transaction-password"
+                type="password"
+                value={transactionPassword}
+                onChange={(e) => setTransactionPassword(e.target.value)}
+                placeholder="Enter secure password"
+                disabled={loading}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setDeleteTransactionId(null);
+                setTransactionPassword("");
+                setDeletionType("soft");
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleDeleteTransaction}
+              disabled={loading}
+              className={`${
+                deletionType === "hard"
+                  ? "bg-red-600 hover:bg-red-700"
+                  : "bg-orange-600 hover:bg-orange-700"
+              } text-white disabled:opacity-50`}
+            >
+              {loading ? (
+                <div className="flex items-center gap-2">
+                  <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                  Deleting...
+                </div>
+              ) : deletionType === "hard" ? (
+                "Permanently Delete"
+              ) : (
+                "Soft Delete"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

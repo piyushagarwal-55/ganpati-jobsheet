@@ -18,7 +18,6 @@ export async function GET(request: NextRequest) {
         party:parties(name)
       `
       )
-      .or("is_deleted.is.null,is_deleted.eq.false")
       .order("created_at", { ascending: false })
       .limit(200); // Limit for performance
 

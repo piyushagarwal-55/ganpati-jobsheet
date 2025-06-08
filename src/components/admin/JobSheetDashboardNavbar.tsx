@@ -258,7 +258,9 @@ export default function JobSheetDashboardNavbar({
                 <Button
                   variant="ghost"
                   className="w-full justify-start"
-                  onClick={() => (window.location.href = "/admin")}
+                  onClick={() =>
+                    (window.location.href = "/admin/job-sheet-form")
+                  }
                 >
                   <Home className="w-4 h-4 mr-2" />
                   Job Sheets Dashboard

@@ -107,6 +107,7 @@ interface Transaction {
   type: string;
   amount: number;
   created_at: string;
+  description?: string;
 }
 
 export default function EnhancedDashboard() {
@@ -214,18 +215,27 @@ export default function EnhancedDashboard() {
     );
 
     // Financial Metrics
-    const totalRevenue = jobSheets.reduce(
+    const jobSheetRevenue = jobSheets.reduce(
       (sum, job) =>
         sum + (job.printing || 0) + (job.uv || 0) + (job.baking || 0),
       0
     );
+
+    // Add payment transactions to total revenue (exclude soft-deleted)
+    const paymentRevenue = transactions
+      .filter(
+        (t) => t.type === "payment" && !t.description?.includes("[DELETED]")
+      )
+      .reduce((sum, t) => sum + (t.amount || 0), 0);
+
+    const totalRevenue = jobSheetRevenue + paymentRevenue;
 
     // Estimate costs (typically 60-70% of revenue for printing business)
     const totalCosts = totalRevenue * 0.65;
     const grossProfit = totalRevenue - totalCosts;
     const netProfit = grossProfit * 0.85; // After overhead costs
     const averageJobValue =
-      totalJobSheets > 0 ? totalRevenue / totalJobSheets : 0;
+      totalJobSheets > 0 ? jobSheetRevenue / totalJobSheets : 0;
 
     // ROI Metrics
     const roi = totalCosts > 0 ? (netProfit / totalCosts) * 100 : 0;

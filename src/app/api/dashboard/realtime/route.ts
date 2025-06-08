@@ -52,7 +52,9 @@ export async function GET() {
     }, 0);
 
     const transactionRevenue = transactions
-      .filter((t) => t.type === "payment" && !t.is_deleted)
+      .filter(
+        (t) => t.type === "payment" && !t.description?.includes("[DELETED]")
+      )
       .reduce((sum, t) => sum + (t.amount || 0), 0);
 
     const combinedRevenue = totalRevenue + transactionRevenue;
@@ -141,7 +143,9 @@ export async function GET() {
 
     // Recent transactions (last 7 days)
     const recentTransactions = transactions.filter(
-      (t) => new Date(t.created_at) >= weekAgo && !t.is_deleted
+      (t) =>
+        new Date(t.created_at) >= weekAgo &&
+        !t.description?.includes("[DELETED]")
     );
 
     // Top performing parties (by revenue)
@@ -208,7 +212,9 @@ export async function GET() {
       // Health indicators
       healthMetrics: {
         activeParties: parties.filter((p) => p.balance !== 0).length,
-        pendingTransactions: transactions.filter((t) => !t.is_deleted).length,
+        pendingTransactions: transactions.filter(
+          (t) => !t.description?.includes("[DELETED]")
+        ).length,
         averageProcessingTime: 24, // hours (could be calculated from data)
       },
     };

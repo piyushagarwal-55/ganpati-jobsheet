@@ -81,13 +81,13 @@ export default function DashboardStats({
     }
   };
 
-  // Initialize and auto-refresh
+  // Initialize and reduce auto-refresh frequency
   useEffect(() => {
     // Initial fetch on client side only
     fetchRealtimeData();
 
-    // Auto-refresh every 30 seconds
-    const interval = setInterval(fetchRealtimeData, 30000);
+    // Auto-refresh every 5 minutes instead of 30 seconds to reduce interference
+    const interval = setInterval(fetchRealtimeData, 300000);
     return () => clearInterval(interval);
   }, []);
 
@@ -137,12 +137,12 @@ export default function DashboardStats({
   };
 
   const handleAddNewJobSheet = () => {
-    window.location.href = "/admin";
+    window.location.href = "/admin/job-sheet-form";
   };
 
   const handleExportData = () => {
     // Export functionality would be implemented here
-    alert("Data exported successfully!");
+    console.log("Data export triggered");
   };
 
   return (

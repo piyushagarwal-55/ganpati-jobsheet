@@ -132,8 +132,8 @@ export default function EnhancedAdminDashboard() {
     // Fetch immediately
     fetchRealtimeData();
 
-    // Auto-refresh every 15 seconds for real-time updates
-    const realtimeInterval = setInterval(fetchRealtimeData, 15000);
+    // Auto-refresh every 3 minutes for real-time updates (reduced frequency)
+    const realtimeInterval = setInterval(fetchRealtimeData, 180000);
 
     return () => clearInterval(realtimeInterval);
   }, []);
@@ -151,9 +151,11 @@ export default function EnhancedAdminDashboard() {
       );
     }, 0);
 
-    // Add transaction revenue
+    // Add transaction revenue (exclude soft-deleted transactions)
     const transactionRevenue = transactionsData
-      .filter((t) => t.type === "payment")
+      .filter(
+        (t) => t.type === "payment" && !t.description?.includes("[DELETED]")
+      )
       .reduce((sum, t) => sum + (t.amount || 0), 0);
 
     const combinedRevenue = totalRevenue + transactionRevenue;

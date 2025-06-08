@@ -15,20 +15,17 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
-import {
-  TrendingUp,
-  BarChart3,
-  Activity,
-  Zap,
-  RefreshCw,
-} from "lucide-react";
+import { TrendingUp, BarChart3, Activity, Zap, RefreshCw } from "lucide-react";
 
 interface EnhancedDashboardProps {
   stats: any;
   chartData: any[];
 }
 
-export default function EnhancedDashboard({ stats, chartData }: EnhancedDashboardProps) {
+export default function EnhancedDashboard({
+  stats,
+  chartData,
+}: EnhancedDashboardProps) {
   const [realtimeData, setRealtimeData] = useState(stats);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
@@ -37,7 +34,7 @@ export default function EnhancedDashboard({ stats, chartData }: EnhancedDashboar
   const fetchRealtimeData = async () => {
     setIsRefreshing(true);
     try {
-      const response = await fetch('/api/dashboard/realtime');
+      const response = await fetch("/api/dashboard/realtime");
       if (response.ok) {
         const data = await response.json();
         if (data.success) {
@@ -46,16 +43,16 @@ export default function EnhancedDashboard({ stats, chartData }: EnhancedDashboar
         }
       }
     } catch (error) {
-      console.error('Error fetching realtime data:', error);
+      console.error("Error fetching realtime data:", error);
     } finally {
       setIsRefreshing(false);
     }
   };
 
-  // Auto-refresh every 30 seconds
+  // Auto-refresh every 5 minutes (reduced frequency)
   useEffect(() => {
     fetchRealtimeData();
-    const interval = setInterval(fetchRealtimeData, 30000);
+    const interval = setInterval(fetchRealtimeData, 300000);
     return () => clearInterval(interval);
   }, []);
 
@@ -73,19 +70,19 @@ export default function EnhancedDashboard({ stats, chartData }: EnhancedDashboar
   };
 
   // Prepare chart data
-  const revenueData = chartData.map(item => ({
+  const revenueData = chartData.map((item) => ({
     month: item.month,
     revenue: item.revenue,
   }));
 
-  const jobsData = chartData.map(item => ({
+  const jobsData = chartData.map((item) => ({
     month: item.month,
     jobs: item.jobSheets,
   }));
 
   const efficiencyData = chartData.map((item, index) => ({
     month: item.month,
-    efficiency: 70 + (index * 2) + Math.random() * 10, // Mock efficiency data
+    efficiency: 70 + index * 2 + Math.random() * 10, // Mock efficiency data
   }));
 
   return (
@@ -95,29 +92,41 @@ export default function EnhancedDashboard({ stats, chartData }: EnhancedDashboar
         <div>
           <div className="flex items-center gap-2">
             <BarChart3 className="w-6 h-6 text-blue-500" />
-            <h1 className="text-2xl font-bold text-gray-900">Portfolio Performance</h1>
+            <h1 className="text-2xl font-bold text-gray-900">
+              Portfolio Performance
+            </h1>
             <span className="bg-green-100 text-green-800 px-2 py-1 rounded text-xs font-medium">
               LIVE
             </span>
           </div>
-          <p className="text-gray-600 mt-1">Real-time business performance tracking and analytics</p>
+          <p className="text-gray-600 mt-1">
+            Real-time business performance tracking and analytics
+          </p>
         </div>
-        
+
         <div className="flex items-center gap-4 text-sm text-gray-600">
           <div className="flex items-center gap-2">
             <span>24h Change</span>
             <span className="text-gray-900 font-medium">
-              {realtimeData.revenueGrowth >= 0 ? '+' : ''}{realtimeData.revenueGrowth.toFixed(1)}%
+              {realtimeData.revenueGrowth >= 0 ? "+" : ""}
+              {realtimeData.revenueGrowth.toFixed(1)}%
             </span>
           </div>
           <div className="flex items-center gap-2">
             <span>Volume</span>
-            <span className="text-gray-900 font-medium">{realtimeData.totalJobSheets}</span>
+            <span className="text-gray-900 font-medium">
+              {realtimeData.totalJobSheets}
+            </span>
           </div>
           <div className="flex items-center gap-2">
             <span>ROI</span>
             <span className="text-green-600 font-medium">
-              {((realtimeData.totalRevenue / Math.max(1, realtimeData.totalJobSheets * 1000)) * 100).toFixed(1)}%
+              {(
+                (realtimeData.totalRevenue /
+                  Math.max(1, realtimeData.totalJobSheets * 1000)) *
+                100
+              ).toFixed(1)}
+              %
             </span>
           </div>
           <button
@@ -125,7 +134,9 @@ export default function EnhancedDashboard({ stats, chartData }: EnhancedDashboar
             disabled={isRefreshing}
             className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
           >
-            <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+            <RefreshCw
+              className={`w-4 h-4 ${isRefreshing ? "animate-spin" : ""}`}
+            />
           </button>
         </div>
       </div>
@@ -144,29 +155,34 @@ export default function EnhancedDashboard({ stats, chartData }: EnhancedDashboar
             <ResponsiveContainer width="100%" height={300}>
               <AreaChart data={revenueData}>
                 <defs>
-                  <linearGradient id="revenueGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.1}/>
+                  <linearGradient
+                    id="revenueGradient"
+                    x1="0"
+                    y1="0"
+                    x2="0"
+                    y2="1"
+                  >
+                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.1} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis 
-                  dataKey="month" 
-                  stroke="#666"
-                  fontSize={12}
-                />
-                <YAxis 
+                <XAxis dataKey="month" stroke="#666" fontSize={12} />
+                <YAxis
                   stroke="#666"
                   fontSize={12}
                   tickFormatter={formatCurrency}
                 />
-                <Tooltip 
-                  formatter={(value) => [formatCurrency(Number(value)), 'Revenue']}
-                  labelStyle={{ color: '#374151' }}
+                <Tooltip
+                  formatter={(value) => [
+                    formatCurrency(Number(value)),
+                    "Revenue",
+                  ]}
+                  labelStyle={{ color: "#374151" }}
                   contentStyle={{
-                    backgroundColor: 'white',
-                    border: '1px solid #e5e7eb',
-                    borderRadius: '8px'
+                    backgroundColor: "white",
+                    border: "1px solid #e5e7eb",
+                    borderRadius: "8px",
                   }}
                 />
                 <Area
@@ -175,7 +191,7 @@ export default function EnhancedDashboard({ stats, chartData }: EnhancedDashboar
                   stroke="#3b82f6"
                   strokeWidth={3}
                   fill="url(#revenueGradient)"
-                  dot={{ fill: '#3b82f6', strokeWidth: 2, r: 4 }}
+                  dot={{ fill: "#3b82f6", strokeWidth: 2, r: 4 }}
                 />
               </AreaChart>
             </ResponsiveContainer>
@@ -194,29 +210,18 @@ export default function EnhancedDashboard({ stats, chartData }: EnhancedDashboar
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={jobsData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis 
-                  dataKey="month" 
-                  stroke="#666"
-                  fontSize={12}
-                />
-                <YAxis 
-                  stroke="#666"
-                  fontSize={12}
-                />
-                <Tooltip 
-                  formatter={(value) => [value, 'Jobs']}
-                  labelStyle={{ color: '#374151' }}
+                <XAxis dataKey="month" stroke="#666" fontSize={12} />
+                <YAxis stroke="#666" fontSize={12} />
+                <Tooltip
+                  formatter={(value) => [value, "Jobs"]}
+                  labelStyle={{ color: "#374151" }}
                   contentStyle={{
-                    backgroundColor: 'white',
-                    border: '1px solid #e5e7eb',
-                    borderRadius: '8px'
+                    backgroundColor: "white",
+                    border: "1px solid #e5e7eb",
+                    borderRadius: "8px",
                   }}
                 />
-                <Bar 
-                  dataKey="jobs" 
-                  fill="#10b981"
-                  radius={[4, 4, 0, 0]}
-                />
+                <Bar dataKey="jobs" fill="#10b981" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
@@ -258,10 +263,15 @@ export default function EnhancedDashboard({ stats, chartData }: EnhancedDashboar
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-gray-600">Monthly Growth</span>
-                <span className={`text-xl font-bold ${
-                  realtimeData.revenueGrowth >= 0 ? 'text-green-600' : 'text-red-600'
-                }`}>
-                  {realtimeData.revenueGrowth >= 0 ? '+' : ''}{realtimeData.revenueGrowth.toFixed(1)}%
+                <span
+                  className={`text-xl font-bold ${
+                    realtimeData.revenueGrowth >= 0
+                      ? "text-green-600"
+                      : "text-red-600"
+                  }`}
+                >
+                  {realtimeData.revenueGrowth >= 0 ? "+" : ""}
+                  {realtimeData.revenueGrowth.toFixed(1)}%
                 </span>
               </div>
             </div>
@@ -280,29 +290,30 @@ export default function EnhancedDashboard({ stats, chartData }: EnhancedDashboar
             <ResponsiveContainer width="100%" height={300}>
               <AreaChart data={efficiencyData}>
                 <defs>
-                  <linearGradient id="efficiencyGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor="#f59e0b" stopOpacity={0.1}/>
+                  <linearGradient
+                    id="efficiencyGradient"
+                    x1="0"
+                    y1="0"
+                    x2="0"
+                    y2="1"
+                  >
+                    <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#f59e0b" stopOpacity={0.1} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis 
-                  dataKey="month" 
-                  stroke="#666"
-                  fontSize={12}
-                />
-                <YAxis 
-                  stroke="#666"
-                  fontSize={12}
-                  domain={[70, 100]}
-                />
-                <Tooltip 
-                  formatter={(value) => [`${Number(value).toFixed(1)}%`, 'Efficiency']}
-                  labelStyle={{ color: '#374151' }}
+                <XAxis dataKey="month" stroke="#666" fontSize={12} />
+                <YAxis stroke="#666" fontSize={12} domain={[70, 100]} />
+                <Tooltip
+                  formatter={(value) => [
+                    `${Number(value).toFixed(1)}%`,
+                    "Efficiency",
+                  ]}
+                  labelStyle={{ color: "#374151" }}
                   contentStyle={{
-                    backgroundColor: 'white',
-                    border: '1px solid #e5e7eb',
-                    borderRadius: '8px'
+                    backgroundColor: "white",
+                    border: "1px solid #e5e7eb",
+                    borderRadius: "8px",
                   }}
                 />
                 <Area

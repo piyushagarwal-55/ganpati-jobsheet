@@ -122,53 +122,53 @@ export default function DashboardPage() {
 
   const [performanceData, setPerformanceData] = useState([
     { name: "Revenue Growth", value: 0, color: "#10b981" },
-    { name: "Job Efficiency", value: 0, color: "#3b82f6" },
-    { name: "Customer Retention", value: 0, color: "#f59e0b" },
-    { name: "Production Quality", value: 0, color: "#8b5cf6" },
+    { name: "Order Volume", value: 0, color: "#3b82f6" },
+    { name: "Monthly Performance", value: 0, color: "#f59e0b" },
+    { name: "Business Growth", value: 0, color: "#8b5cf6" },
   ]);
 
   const [chartData, setChartData] = useState([
     {
       month: "Jan",
-      revenue: 180000,
       jobs: 12,
       impressions: 890,
-      efficiency: 85,
+      sheets: 1200,
+      parties: 8,
     },
     {
       month: "Feb",
-      revenue: 220000,
       jobs: 15,
       impressions: 1150,
-      efficiency: 88,
+      sheets: 1450,
+      parties: 9,
     },
     {
       month: "Mar",
-      revenue: 195000,
       jobs: 13,
       impressions: 965,
-      efficiency: 82,
+      sheets: 1300,
+      parties: 8,
     },
     {
       month: "Apr",
-      revenue: 265000,
       jobs: 18,
       impressions: 1320,
-      efficiency: 90,
+      sheets: 1650,
+      parties: 11,
     },
     {
       month: "May",
-      revenue: 285000,
       jobs: 20,
       impressions: 1485,
-      efficiency: 92,
+      sheets: 1750,
+      parties: 12,
     },
     {
       month: "Jun",
-      revenue: 310000,
       jobs: 22,
       impressions: 1650,
-      efficiency: 95,
+      sheets: 1850,
+      parties: 13,
     },
   ]);
 
@@ -217,39 +217,6 @@ export default function DashboardPage() {
   useEffect(() => {
     loadDashboardData();
   }, []);
-
-  // Memoized calculations to avoid re-computation
-  const businessMetrics = useMemo(
-    () => [
-      {
-        metric: "Completed Jobs",
-        current: stats.totalJobSheets,
-        target: 25,
-        color: "#10b981",
-      },
-      {
-        metric: "Active Customers",
-        current: stats.totalParties,
-        target: 15,
-        color: "#3b82f6",
-      },
-      {
-        metric: "Revenue (₹K)",
-        current: Math.round(stats.totalRevenue / 1000),
-        target: 350,
-        color: "#f59e0b",
-      },
-      {
-        metric: "Efficiency %",
-        current: Math.round(
-          performanceData.find((p) => p.name === "Job Efficiency")?.value || 0
-        ),
-        target: 95,
-        color: "#8b5cf6",
-      },
-    ],
-    [stats, performanceData]
-  );
 
   // Fetch realtime dashboard data
   const fetchRealtimeData = useCallback(async () => {
@@ -345,11 +312,11 @@ export default function DashboardPage() {
     [cachedData, isCacheValid, fetchRealtimeData]
   );
 
-  // Auto-refresh realtime data every 15 seconds
+  // Auto-refresh realtime data every 2 minutes (reduced frequency)
   useEffect(() => {
     const interval = setInterval(() => {
       fetchRealtimeData();
-    }, 15000);
+    }, 120000); // 2 minutes instead of 15 seconds
 
     return () => clearInterval(interval);
   }, [fetchRealtimeData]);
@@ -428,12 +395,6 @@ export default function DashboardPage() {
         }));
         setLoading((prev) => ({ ...prev, jobSheets: false, charts: false }));
         updateStats({ jobSheets });
-
-        // Update charts with real data
-        if (jobSheets.length > 0) {
-          const monthlyData = generateMonthlyChartData(jobSheets);
-          setChartData(monthlyData);
-        }
       } catch (error) {
         setLoading((prev) => ({ ...prev, jobSheets: false, charts: false }));
         throw error;
@@ -470,8 +431,9 @@ export default function DashboardPage() {
       const currentJobSheets = jobSheets || cachedData.jobSheets.data || [];
 
       // Quick calculations - optimized for speed
+      // Filter out soft-deleted transactions (those with [DELETED] in description)
       const activeTransactions = currentTransactions.filter(
-        (t: any) => !t.is_deleted
+        (t: any) => !t.description?.includes("[DELETED]")
       );
 
       const totalBalance = currentParties.reduce(
@@ -545,15 +507,28 @@ export default function DashboardPage() {
 
       setStats(newStats);
 
-      // Update performance metrics asynchronously
-      requestIdleCallback(() => {
-        const calculatedPerformanceData = calculatePerformanceMetrics(
-          currentJobSheets,
-          currentTransactions,
-          currentParties
-        );
-        setPerformanceData(calculatedPerformanceData);
+      // Update charts immediately - don't wait for idle callback
+      console.log("Updating dashboard with data:", {
+        jobSheets: currentJobSheets.length,
+        parties: currentParties.length,
+        transactions: currentTransactions.length,
       });
+
+      const calculatedPerformanceData = calculatePerformanceMetrics(
+        currentJobSheets,
+        currentTransactions,
+        currentParties
+      );
+      console.log("Calculated performance data:", calculatedPerformanceData);
+      setPerformanceData(calculatedPerformanceData);
+
+      // Update chart data with live data
+      const newChartData = generateMonthlyChartData(
+        currentJobSheets,
+        currentParties
+      );
+      console.log("Generated chart data:", newChartData);
+      setChartData(newChartData);
     },
     [cachedData]
   );
@@ -580,9 +555,19 @@ export default function DashboardPage() {
 
     setPerformanceData([
       { name: "Revenue Growth", value: 12.5, color: "#10b981" },
-      { name: "Job Efficiency", value: 85.0, color: "#3b82f6" },
-      { name: "Customer Retention", value: 90.0, color: "#f59e0b" },
-      { name: "Production Quality", value: 88.0, color: "#8b5cf6" },
+      { name: "Order Volume", value: 75.0, color: "#3b82f6" },
+      { name: "Monthly Performance", value: 68.0, color: "#f59e0b" },
+      { name: "Business Growth", value: 82.0, color: "#8b5cf6" },
+    ]);
+
+    // Set fallback chart data
+    setChartData([
+      { month: "Jan", jobs: 3, impressions: 150, sheets: 400, parties: 2 },
+      { month: "Feb", jobs: 5, impressions: 280, sheets: 650, parties: 3 },
+      { month: "Mar", jobs: 4, impressions: 220, sheets: 520, parties: 3 },
+      { month: "Apr", jobs: 6, impressions: 320, sheets: 720, parties: 4 },
+      { month: "May", jobs: 7, impressions: 380, sheets: 850, parties: 5 },
+      { month: "Jun", jobs: 8, impressions: 450, sheets: 920, parties: 5 },
     ]);
 
     setLoading({
@@ -636,58 +621,58 @@ export default function DashboardPage() {
       const revenueGrowth =
         lastRevenue > 0
           ? ((currentRevenue - lastRevenue) / lastRevenue) * 100
-          : 25;
+          : currentRevenue > 0
+            ? 25
+            : 0;
 
-      // Job efficiency (jobs with complete data)
-      const completeJobs = jobSheets.filter(
-        (job) => job.printing && job.size && job.description && job.party_name
-      );
-      const jobEfficiency =
-        jobSheets.length > 0
-          ? (completeJobs.length / jobSheets.length) * 100
-          : 85;
+      // Order volume calculation
+      const currentMonthOrderCount = currentMonthJobs.length;
+      const lastMonthOrderCount = lastMonthJobs.length;
+      const orderVolumeGrowth =
+        lastMonthOrderCount > 0
+          ? ((currentMonthOrderCount - lastMonthOrderCount) /
+              lastMonthOrderCount) *
+            100
+          : currentMonthOrderCount > 0
+            ? 15
+            : 0;
 
-      // Customer retention (parties with recent transactions)
-      const recentTransactions = transactions.filter((t) => {
-        if (!t.created_at) return false;
-        const transDate = new Date(t.created_at);
-        const threeMonthsAgo = new Date();
-        threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
-        return transDate >= threeMonthsAgo;
-      });
+      // Monthly performance (based on revenue vs target)
+      const monthlyTarget = 50000; // You can adjust this target
+      const monthlyPerformance =
+        currentRevenue > 0
+          ? Math.min(100, (currentRevenue / monthlyTarget) * 100)
+          : 0;
 
-      const activeParties = new Set(recentTransactions.map((t) => t.party_id));
-      const customerRetention =
-        parties.length > 0 ? (activeParties.size / parties.length) * 100 : 90;
-
-      // Production quality (jobs with UV/baking processes)
-      const qualityJobs = jobSheets.filter(
-        (job) => (job.uv && job.uv > 0) || (job.baking && job.baking > 0)
-      );
-      const productionQuality =
-        jobSheets.length > 0
-          ? (qualityJobs.length / jobSheets.length) * 100
-          : 88;
+      // Business growth (overall trend based on total jobs vs last period)
+      const totalJobsThisMonth = currentMonthJobs.length;
+      const avgJobsPerMonth = jobSheets.length / 6; // Average over 6 months
+      const businessGrowth =
+        avgJobsPerMonth > 0
+          ? Math.min(100, (totalJobsThisMonth / avgJobsPerMonth) * 100)
+          : totalJobsThisMonth > 0
+            ? 50
+            : 0;
 
       return [
         {
           name: "Revenue Growth",
-          value: Math.max(0, Math.min(100, revenueGrowth)),
+          value: Math.max(0, Math.min(100, Math.abs(revenueGrowth))),
           color: "#10b981",
         },
         {
-          name: "Job Efficiency",
-          value: Math.max(0, Math.min(100, jobEfficiency)),
+          name: "Order Volume",
+          value: Math.max(0, Math.min(100, Math.abs(orderVolumeGrowth))),
           color: "#3b82f6",
         },
         {
-          name: "Customer Retention",
-          value: Math.max(0, Math.min(100, customerRetention)),
+          name: "Monthly Performance",
+          value: Math.max(0, Math.min(100, monthlyPerformance)),
           color: "#f59e0b",
         },
         {
-          name: "Production Quality",
-          value: Math.max(0, Math.min(100, productionQuality)),
+          name: "Business Growth",
+          value: Math.max(0, Math.min(100, businessGrowth)),
           color: "#8b5cf6",
         },
       ];
@@ -696,43 +681,55 @@ export default function DashboardPage() {
   );
 
   // Generate monthly chart data from real job sheets
-  const generateMonthlyChartData = useCallback((jobSheets: any[]) => {
-    const monthlyData: { [key: string]: any } = {};
+  const generateMonthlyChartData = useCallback(
+    (jobSheets: any[], parties: any[] = []) => {
+      const monthlyData: { [key: string]: any } = {};
 
-    jobSheets.forEach((job) => {
-      if (!job.created_at) return;
+      // Initialize last 6 months
+      for (let i = 5; i >= 0; i--) {
+        const date = new Date();
+        date.setMonth(date.getMonth() - i);
+        const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+        const monthName = date.toLocaleDateString("en-US", { month: "short" });
 
-      const date = new Date(job.created_at);
-      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-      const monthName = date.toLocaleDateString("en-US", { month: "short" });
-
-      if (!monthlyData[monthKey]) {
         monthlyData[monthKey] = {
           month: monthName,
-          revenue: 0,
           jobs: 0,
           impressions: 0,
-          efficiency: 0,
+          sheets: 0,
+          parties: 0,
         };
       }
 
-      monthlyData[monthKey].revenue +=
-        (job.printing || 0) + (job.uv || 0) + (job.baking || 0);
-      monthlyData[monthKey].jobs += 1;
-      monthlyData[monthKey].impressions += job.imp || 0;
-    });
+      jobSheets.forEach((job) => {
+        if (!job.created_at && !job.job_date) return;
 
-    // Convert to array and calculate efficiency
-    const chartArray = Object.values(monthlyData).map((data: any) => ({
-      ...data,
-      efficiency:
-        data.jobs > 0 ? Math.min(100, (data.impressions / data.jobs) * 2) : 85,
-    }));
+        const date = new Date(job.created_at || job.job_date);
+        const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
 
-    // Sort by month and return last 6 months
-    chartArray.sort((a: any, b: any) => a.month.localeCompare(b.month));
-    return chartArray.slice(-6);
-  }, []);
+        if (monthlyData[monthKey]) {
+          monthlyData[monthKey].jobs += 1;
+          monthlyData[monthKey].impressions += job.imp || 0;
+          monthlyData[monthKey].sheets += job.size || 0;
+        }
+      });
+
+      // Count active parties per month (approximate distribution)
+      const activePartiesCount = parties.length;
+      Object.keys(monthlyData).forEach((key, index) => {
+        monthlyData[key].parties = Math.max(
+          1,
+          Math.floor(activePartiesCount * (0.6 + index * 0.1))
+        );
+      });
+
+      // Convert to array
+      const chartArray = Object.values(monthlyData);
+
+      return chartArray;
+    },
+    []
+  );
 
   // Format currency
   const formatCurrency = useCallback((amount: number) => {
@@ -758,15 +755,21 @@ export default function DashboardPage() {
   // Format tooltip values for charts
   const formatTooltipValue = useCallback(
     (value: any, name: string) => {
-      if (name === "revenue") {
-        return [formatCurrency(value), "Revenue"];
+      if (name === "jobs") {
+        return [formatNumber(value), "Job Sheets"];
       }
-      if (name === "efficiency") {
-        return [`${value}%`, "Efficiency"];
+      if (name === "sheets") {
+        return [formatNumber(value), "Sheets Printed"];
       }
-      return [value, name];
+      if (name === "impressions") {
+        return [formatNumber(value), "Impressions"];
+      }
+      if (name === "parties") {
+        return [formatNumber(value), "Active Parties"];
+      }
+      return [formatNumber(value), name];
     },
-    [formatCurrency]
+    [formatNumber]
   );
 
   // Manual refresh function
@@ -964,292 +967,344 @@ export default function DashboardPage() {
           </Card>
         </div>
 
-        {/* Business Metrics Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          {businessMetrics.map((metric, index) => (
-            <Card key={index} className="border border-gray-200">
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-medium text-gray-600">
-                    {metric.metric}
-                  </span>
-                  <Badge
-                    variant={
-                      metric.current >= metric.target ? "default" : "secondary"
-                    }
-                  >
-                    {((metric.current / metric.target) * 100).toFixed(0)}%
-                  </Badge>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span
-                    className="text-2xl font-bold"
-                    style={{ color: metric.color }}
-                  >
-                    {metric.current}
-                  </span>
-                  <span className="text-sm text-gray-500">
-                    / {metric.target}
-                  </span>
-                </div>
-                <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
-                  <div
-                    className="h-2 rounded-full transition-all duration-1000"
-                    style={{
-                      width: `${Math.min(100, (metric.current / metric.target) * 100)}%`,
-                      backgroundColor: metric.color,
-                    }}
-                  ></div>
-                </div>
+        {/* Analytics Dashboard */}
+        <div className="space-y-8 mb-8">
+          {/* Performance Overview Cards */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
+            {performanceData.map((metric, index) => (
+              <Card
+                key={index}
+                className="bg-gradient-to-br from-white to-gray-50 border-0 shadow-md hover:shadow-lg transition-all duration-300"
+              >
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-gray-600 mb-1">
+                        {metric.name}
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <span
+                          className="text-2xl font-bold"
+                          style={{ color: metric.color }}
+                        >
+                          {metric.value.toFixed(1)}%
+                        </span>
+                      </div>
+                    </div>
+                    <div
+                      className="w-12 h-12 rounded-full flex items-center justify-center"
+                      style={{ backgroundColor: `${metric.color}20` }}
+                    >
+                      <div
+                        className="w-6 h-6 rounded-full"
+                        style={{ backgroundColor: metric.color }}
+                      />
+                    </div>
+                  </div>
+                  <div className="mt-4">
+                    <div className="w-full bg-gray-200 rounded-full h-2">
+                      <div
+                        className="h-2 rounded-full transition-all duration-1000"
+                        style={{
+                          width: `${Math.min(100, metric.value)}%`,
+                          backgroundColor: metric.color,
+                        }}
+                      />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+
+          {/* Main Charts Grid */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            {/* Job Sheets Trend */}
+            <Card className="shadow-lg border-0">
+              <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-t-lg">
+                <CardTitle className="flex items-center gap-2 text-blue-900">
+                  <FileText className="w-5 h-5 text-blue-600" />
+                  Job Sheets Monthly Trend
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-6">
+                {loading.charts ? (
+                  <div className="h-80 flex items-center justify-center">
+                    <div className="animate-pulse text-gray-500">
+                      Loading job data...
+                    </div>
+                  </div>
+                ) : (
+                  <div className="h-80">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={chartData}>
+                        <defs>
+                          <linearGradient
+                            id="jobsGradient"
+                            x1="0"
+                            y1="0"
+                            x2="0"
+                            y2="1"
+                          >
+                            <stop
+                              offset="5%"
+                              stopColor="#3b82f6"
+                              stopOpacity={0.8}
+                            />
+                            <stop
+                              offset="95%"
+                              stopColor="#3b82f6"
+                              stopOpacity={0.1}
+                            />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid
+                          strokeDasharray="3 3"
+                          className="opacity-30"
+                        />
+                        <XAxis dataKey="month" stroke="#6b7280" />
+                        <YAxis stroke="#6b7280" />
+                        <Tooltip
+                          formatter={(value: any, name: string) => [
+                            formatNumber(value),
+                            "Job Sheets",
+                          ]}
+                          labelStyle={{ color: "#374151" }}
+                          contentStyle={{
+                            backgroundColor: "white",
+                            border: "1px solid #e5e7eb",
+                            borderRadius: "8px",
+                            boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)",
+                          }}
+                        />
+                        <Area
+                          type="monotone"
+                          dataKey="jobs"
+                          stroke="#3b82f6"
+                          fill="url(#jobsGradient)"
+                          strokeWidth={3}
+                          dot={{ fill: "#3b82f6", strokeWidth: 2, r: 4 }}
+                          activeDot={{
+                            r: 6,
+                            strokeWidth: 2,
+                            stroke: "#3b82f6",
+                          }}
+                        />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
               </CardContent>
             </Card>
-          ))}
-        </div>
 
-        {/* Charts Section */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-          {/* Revenue Trend Chart */}
-          <Card className="shadow-lg">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <LineChart className="w-5 h-5 text-blue-600" />
-                Revenue & Efficiency Trend
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {loading.charts ? (
-                <div className="h-80 flex items-center justify-center">
-                  <div className="animate-pulse text-gray-500">
-                    Loading charts...
+            {/* Production Analytics */}
+            <Card className="shadow-lg border-0">
+              <CardHeader className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-t-lg">
+                <CardTitle className="flex items-center gap-2 text-green-900">
+                  <BarChart3 className="w-5 h-5 text-green-600" />
+                  Production Metrics
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-6">
+                {loading.charts ? (
+                  <div className="h-80 flex items-center justify-center">
+                    <div className="animate-pulse text-gray-500">
+                      Loading production data...
+                    </div>
                   </div>
-                </div>
-              ) : (
-                <div className="h-80">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <ComposedChart data={chartData}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="month" />
-                      <YAxis yAxisId="left" />
-                      <YAxis yAxisId="right" orientation="right" />
-                      <Tooltip formatter={formatTooltipValue} />
-                      <Legend />
-                      <Bar
-                        yAxisId="left"
-                        dataKey="revenue"
-                        fill="#3b82f6"
-                        name="Revenue"
-                      />
-                      <Line
-                        yAxisId="right"
-                        type="monotone"
-                        dataKey="efficiency"
-                        stroke="#10b981"
-                        strokeWidth={3}
-                        name="Efficiency %"
-                      />
-                    </ComposedChart>
-                  </ResponsiveContainer>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Performance Metrics Chart */}
-          <Card className="shadow-lg">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <PieChart className="w-5 h-5 text-green-600" />
-                Performance Metrics
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {loading.charts ? (
-                <div className="h-80 flex items-center justify-center">
-                  <div className="animate-pulse text-gray-500">
-                    Loading metrics...
+                ) : (
+                  <div className="h-80">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <ComposedChart data={chartData}>
+                        <CartesianGrid
+                          strokeDasharray="3 3"
+                          className="opacity-30"
+                        />
+                        <XAxis dataKey="month" stroke="#6b7280" />
+                        <YAxis yAxisId="left" stroke="#6b7280" />
+                        <YAxis
+                          yAxisId="right"
+                          orientation="right"
+                          stroke="#6b7280"
+                        />
+                        <Tooltip
+                          formatter={(value: any, name: string) => [
+                            formatNumber(value),
+                            name === "sheets"
+                              ? "Sheets Printed"
+                              : name === "impressions"
+                                ? "Total Impressions"
+                                : "Active Parties",
+                          ]}
+                          labelStyle={{ color: "#374151" }}
+                          contentStyle={{
+                            backgroundColor: "white",
+                            border: "1px solid #e5e7eb",
+                            borderRadius: "8px",
+                            boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)",
+                          }}
+                        />
+                        <Legend />
+                        <Bar
+                          yAxisId="left"
+                          dataKey="sheets"
+                          fill="#10b981"
+                          name="Sheets Printed"
+                          radius={[4, 4, 0, 0]}
+                        />
+                        <Line
+                          yAxisId="right"
+                          type="monotone"
+                          dataKey="parties"
+                          stroke="#f59e0b"
+                          strokeWidth={3}
+                          name="Active Parties"
+                          dot={{ fill: "#f59e0b", strokeWidth: 2, r: 4 }}
+                        />
+                      </ComposedChart>
+                    </ResponsiveContainer>
                   </div>
-                </div>
-              ) : (
-                <div className="h-80">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <RechartsPieChart>
-                      <Pie
-                        data={performanceData}
-                        cx="50%"
-                        cy="50%"
-                        labelLine={false}
-                        label={({ name, value }) =>
-                          `${name}: ${value.toFixed(1)}%`
-                        }
-                        outerRadius={100}
-                        fill="#8884d8"
-                        dataKey="value"
-                      >
-                        {performanceData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.color} />
-                        ))}
-                      </Pie>
-                      <Tooltip
-                        formatter={(value: any) => [
-                          `${value.toFixed(1)}%`,
-                          "Performance",
-                        ]}
-                      />
-                      <Legend />
-                    </RechartsPieChart>
-                  </ResponsiveContainer>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
 
-        {/* Production Analytics */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-          {/* Jobs & Impressions Chart */}
-          <Card className="shadow-lg">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <BarChart3 className="w-5 h-5 text-purple-600" />
-                Production Volume
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {loading.charts ? (
-                <div className="h-80 flex items-center justify-center">
-                  <div className="animate-pulse text-gray-500">
-                    Loading production data...
+          {/* Secondary Charts */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            {/* Impressions Volume */}
+            <Card className="shadow-lg border-0">
+              <CardHeader className="bg-gradient-to-r from-purple-50 to-violet-50 rounded-t-lg">
+                <CardTitle className="flex items-center gap-2 text-purple-900">
+                  <Activity className="w-5 h-5 text-purple-600" />
+                  Impressions Volume
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-6">
+                {loading.charts ? (
+                  <div className="h-64 flex items-center justify-center">
+                    <div className="animate-pulse text-gray-500">
+                      Loading impressions data...
+                    </div>
                   </div>
-                </div>
-              ) : (
-                <div className="h-80">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={chartData}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="month" />
-                      <YAxis />
-                      <Tooltip
-                        formatter={(value: any, name: string) => [
-                          formatNumber(value),
-                          name === "jobs" ? "Jobs" : "Impressions",
-                        ]}
-                      />
-                      <Legend />
-                      <Area
-                        type="monotone"
-                        dataKey="jobs"
-                        stackId="1"
-                        stroke="#8b5cf6"
-                        fill="#8b5cf6"
-                        fillOpacity={0.6}
-                        name="Jobs"
-                      />
-                      <Area
-                        type="monotone"
-                        dataKey="impressions"
-                        stackId="2"
-                        stroke="#06b6d4"
-                        fill="#06b6d4"
-                        fillOpacity={0.6}
-                        name="Impressions"
-                      />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Financial Summary */}
-          <Card className="shadow-lg">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <CreditCard className="w-5 h-5 text-indigo-600" />
-                Financial Summary
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="text-center p-4 bg-green-50 rounded-lg">
-                  <div className="text-2xl font-bold text-green-600">
-                    {formatCurrency(stats.totalPayments)}
+                ) : (
+                  <div className="h-64">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={chartData}>
+                        <defs>
+                          <linearGradient
+                            id="impressionsGradient"
+                            x1="0"
+                            y1="0"
+                            x2="0"
+                            y2="1"
+                          >
+                            <stop
+                              offset="5%"
+                              stopColor="#8b5cf6"
+                              stopOpacity={0.8}
+                            />
+                            <stop
+                              offset="95%"
+                              stopColor="#8b5cf6"
+                              stopOpacity={0.1}
+                            />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid
+                          strokeDasharray="3 3"
+                          className="opacity-30"
+                        />
+                        <XAxis dataKey="month" stroke="#6b7280" />
+                        <YAxis stroke="#6b7280" />
+                        <Tooltip
+                          formatter={(value: any) => [
+                            formatNumber(value),
+                            "Impressions",
+                          ]}
+                          labelStyle={{ color: "#374151" }}
+                          contentStyle={{
+                            backgroundColor: "white",
+                            border: "1px solid #e5e7eb",
+                            borderRadius: "8px",
+                            boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)",
+                          }}
+                        />
+                        <Area
+                          type="monotone"
+                          dataKey="impressions"
+                          stroke="#8b5cf6"
+                          fill="url(#impressionsGradient)"
+                          strokeWidth={2}
+                        />
+                      </AreaChart>
+                    </ResponsiveContainer>
                   </div>
-                  <div className="text-sm text-green-700">Total Payments</div>
-                </div>
-                <div className="text-center p-4 bg-blue-50 rounded-lg">
-                  <div className="text-2xl font-bold text-blue-600">
-                    {formatCurrency(stats.totalOrders)}
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Business Performance Pie Chart */}
+            <Card className="shadow-lg border-0">
+              <CardHeader className="bg-gradient-to-r from-orange-50 to-amber-50 rounded-t-lg">
+                <CardTitle className="flex items-center gap-2 text-orange-900">
+                  <PieChart className="w-5 h-5 text-orange-600" />
+                  Performance Distribution
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-6">
+                {loading.charts ? (
+                  <div className="h-64 flex items-center justify-center">
+                    <div className="animate-pulse text-gray-500">
+                      Loading performance data...
+                    </div>
                   </div>
-                  <div className="text-sm text-blue-700">Total Orders</div>
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm font-medium">Revenue Growth</span>
-                  <span className="text-sm font-bold text-green-600">
-                    +
-                    {performanceData
-                      .find((p) => p.name === "Revenue Growth")
-                      ?.value.toFixed(1) || 0}
-                    %
-                  </span>
-                </div>
-                <div className="w-full bg-gray-200 rounded-full h-2">
-                  <div
-                    className="bg-green-600 h-2 rounded-full transition-all duration-1000"
-                    style={{
-                      width: `${Math.min(100, performanceData.find((p) => p.name === "Revenue Growth")?.value || 0)}%`,
-                    }}
-                  ></div>
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm font-medium">
-                    Customer Satisfaction
-                  </span>
-                  <span className="text-sm font-bold text-blue-600">
-                    {performanceData
-                      .find((p) => p.name === "Customer Retention")
-                      ?.value.toFixed(1) || 0}
-                    %
-                  </span>
-                </div>
-                <div className="w-full bg-gray-200 rounded-full h-2">
-                  <div
-                    className="bg-blue-600 h-2 rounded-full transition-all duration-1000"
-                    style={{
-                      width: `${performanceData.find((p) => p.name === "Customer Retention")?.value || 0}%`,
-                    }}
-                  ></div>
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm font-medium">
-                    Production Quality
-                  </span>
-                  <span className="text-sm font-bold text-purple-600">
-                    {performanceData
-                      .find((p) => p.name === "Production Quality")
-                      ?.value.toFixed(1) || 0}
-                    %
-                  </span>
-                </div>
-                <div className="w-full bg-gray-200 rounded-full h-2">
-                  <div
-                    className="bg-purple-600 h-2 rounded-full transition-all duration-1000"
-                    style={{
-                      width: `${performanceData.find((p) => p.name === "Production Quality")?.value || 0}%`,
-                    }}
-                  ></div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+                ) : (
+                  <div className="h-64">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <RechartsPieChart>
+                        <Pie
+                          data={performanceData}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={40}
+                          outerRadius={80}
+                          paddingAngle={5}
+                          dataKey="value"
+                        >
+                          {performanceData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={entry.color} />
+                          ))}
+                        </Pie>
+                        <Tooltip
+                          formatter={(value: any) => [
+                            `${value.toFixed(1)}%`,
+                            "Performance",
+                          ]}
+                          contentStyle={{
+                            backgroundColor: "white",
+                            border: "1px solid #e5e7eb",
+                            borderRadius: "8px",
+                            boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)",
+                          }}
+                        />
+                        <Legend
+                          verticalAlign="bottom"
+                          height={36}
+                          formatter={(value, entry) => (
+                            <span
+                              style={{ color: entry.color, fontWeight: 500 }}
+                            >
+                              {value}
+                            </span>
+                          )}
+                        />
+                      </RechartsPieChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         </div>
 
         {/* Recent Activity */}
@@ -1353,7 +1408,7 @@ export default function DashboardPage() {
                   <FileText className="w-5 h-5 text-green-600" />
                   Recent Job Sheets
                 </span>
-                <Link href="/admin">
+                <Link href="/admin/job-sheet-form">
                   <Button variant="outline" size="sm">
                     View All <ArrowRight className="w-4 h-4 ml-1" />
                   </Button>
@@ -1446,7 +1501,7 @@ export default function DashboardPage() {
                   <span className="text-sm">Manage Parties</span>
                 </Button>
               </Link>
-              <Link href="/admin">
+              <Link href="/admin/job-sheet-form">
                 <Button
                   variant="outline"
                   className="w-full h-16 flex flex-col items-center justify-center gap-2"

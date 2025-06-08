@@ -21,7 +21,18 @@ export async function POST() {
       CREATE INDEX IF NOT EXISTS idx_job_sheets_deleted_at ON job_sheets(deleted_at);
     `;
 
-    // Step 2: Try to create the party_transactions table
+    // Step 2: Add soft delete columns to party_transactions table
+    const addTransactionSoftDeleteColumns = `
+      -- Add soft delete columns to party_transactions table
+      ALTER TABLE party_transactions 
+      ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()),
+      ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT FALSE;
+
+      -- Create index for better performance on soft delete queries
+      CREATE INDEX IF NOT EXISTS idx_party_transactions_is_deleted ON party_transactions(is_deleted);
+    `;
+
+    // Step 3: Try to create the party_transactions table
     const createTableQuery = `
       CREATE TABLE IF NOT EXISTS party_transactions (
           id SERIAL PRIMARY KEY,
@@ -30,11 +41,14 @@ export async function POST() {
           amount DECIMAL(12,2) NOT NULL,
           description TEXT,
           balance_after DECIMAL(12,2) NOT NULL,
-          created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()),
+          updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()),
+          is_deleted BOOLEAN DEFAULT FALSE
       );
 
       CREATE INDEX IF NOT EXISTS idx_party_transactions_party_id ON party_transactions(party_id);
       CREATE INDEX IF NOT EXISTS idx_party_transactions_created_at ON party_transactions(created_at);
+      CREATE INDEX IF NOT EXISTS idx_party_transactions_is_deleted ON party_transactions(is_deleted);
 
       ALTER TABLE party_transactions ENABLE ROW LEVEL SECURITY;
       CREATE POLICY IF NOT EXISTS "Allow all operations" ON party_transactions FOR ALL USING (true);
@@ -49,6 +63,23 @@ export async function POST() {
       console.log("Soft delete columns addition failed:", softDeleteError);
     } else {
       console.log("Soft delete columns added successfully");
+    }
+
+    // Execute the transaction soft delete columns addition
+    const { error: transactionSoftDeleteError } = await supabase.rpc(
+      "exec_sql",
+      {
+        sql: addTransactionSoftDeleteColumns,
+      }
+    );
+
+    if (transactionSoftDeleteError) {
+      console.log(
+        "Transaction soft delete columns addition failed:",
+        transactionSoftDeleteError
+      );
+    } else {
+      console.log("Transaction soft delete columns added successfully");
     }
 
     // Use raw SQL query for party_transactions table
@@ -79,6 +110,7 @@ export async function POST() {
       message: "Database setup completed successfully",
       results: {
         softDeleteColumns: !softDeleteError,
+        transactionSoftDeleteColumns: !transactionSoftDeleteError,
         partyTransactionsTable: !createError,
         jobSheetsTest: !testJobSheetsError,
         transactionsTest: !testTransactionsError,
