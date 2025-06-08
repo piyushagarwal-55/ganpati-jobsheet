@@ -28,6 +28,8 @@ import {
   Wifi,
   WifiOff,
 } from "lucide-react";
+import Loading from "@/components/ui/loading";
+import { PageHeader } from "@/components/ui/page-header";
 import {
   LineChart as RechartsLineChart,
   Line,
@@ -777,86 +779,83 @@ export default function DashboardPage() {
     loadDashboardData(true);
   }, [loadDashboardData]);
 
+  // Show full-screen loading when all main data is loading
+  if (loading.parties && loading.transactions && loading.jobSheets) {
+    return (
+      <Loading message="Loading Business Dashboard..." size="lg" fullScreen />
+    );
+  }
+
   return (
     <div className="min-h-screen">
       <div className="container mx-auto px-4 py-2 max-w-7xl">
         {/* Header Section */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
-          <div>
-            <h1 className="text-4xl font-bold text-gray-900 mb-2">
-              Business Dashboard
-            </h1>
-            <p className="text-gray-600 text-lg">
-              Real-time insights for your printing business
-            </p>
-            {lastUpdated && (
-              <p className="text-sm text-gray-500 mt-1">
-                Last updated: {lastUpdated.toLocaleTimeString()}
-              </p>
-            )}
-          </div>
-
+        <PageHeader
+          title="Business Dashboard"
+          description="Real-time insights for your printing business"
+          icon={BarChart3}
+          iconColor="text-blue-600"
+          lastUpdated={lastUpdated || undefined}
+        >
           {/* Connection Status & Refresh */}
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
-              {connectionStatus === "online" ? (
-                <Wifi className="w-4 h-4 text-green-600" />
-              ) : connectionStatus === "slow" ? (
-                <Activity className="w-4 h-4 text-yellow-600" />
-              ) : (
-                <WifiOff className="w-4 h-4 text-red-600" />
-              )}
-              <span
-                className={`text-sm font-medium ${
-                  connectionStatus === "online"
-                    ? "text-green-600"
-                    : connectionStatus === "slow"
-                      ? "text-yellow-600"
-                      : "text-red-600"
-                }`}
-              >
-                {connectionStatus === "online"
-                  ? "Online"
+          <div className="flex items-center gap-2">
+            {connectionStatus === "online" ? (
+              <Wifi className="w-4 h-4 text-green-600" />
+            ) : connectionStatus === "slow" ? (
+              <Activity className="w-4 h-4 text-yellow-600" />
+            ) : (
+              <WifiOff className="w-4 h-4 text-red-600" />
+            )}
+            <span
+              className={`text-sm font-medium ${
+                connectionStatus === "online"
+                  ? "text-green-600"
                   : connectionStatus === "slow"
-                    ? "Slow Connection"
-                    : "Offline"}
-              </span>
-            </div>
-
-            <Button
-              onClick={handleRefresh}
-              variant="outline"
-              size="sm"
-              disabled={
-                loading.parties && loading.transactions && loading.jobSheets
-              }
+                    ? "text-yellow-600"
+                    : "text-red-600"
+              }`}
             >
-              <RefreshCw
-                className={`w-4 h-4 mr-2 ${
-                  loading.parties || loading.transactions || loading.jobSheets
-                    ? "animate-spin"
-                    : ""
-                }`}
-              />
-              Refresh
-            </Button>
-
-            <div className="flex gap-2">
-              <Link href="/admin/job-sheet-form">
-                <Button className="bg-blue-600 hover:bg-blue-700 text-white">
-                  <Plus className="w-4 h-4 mr-2" />
-                  New Job Sheet
-                </Button>
-              </Link>
-              <Link href="/parties">
-                <Button variant="outline">
-                  <Building2 className="w-4 h-4 mr-2" />
-                  Manage Parties
-                </Button>
-              </Link>
-            </div>
+              {connectionStatus === "online"
+                ? "Online"
+                : connectionStatus === "slow"
+                  ? "Slow Connection"
+                  : "Offline"}
+            </span>
           </div>
-        </div>
+
+          <Button
+            onClick={handleRefresh}
+            variant="outline"
+            size="sm"
+            disabled={
+              loading.parties && loading.transactions && loading.jobSheets
+            }
+          >
+            <RefreshCw
+              className={`w-4 h-4 mr-2 ${
+                loading.parties || loading.transactions || loading.jobSheets
+                  ? "animate-spin"
+                  : ""
+              }`}
+            />
+            Refresh
+          </Button>
+
+          <div className="flex gap-2">
+            <Link href="/admin/job-sheet-form">
+              <Button className="bg-blue-600 hover:bg-blue-700 text-white">
+                <Plus className="w-4 h-4 mr-2" />
+                New Job Sheet
+              </Button>
+            </Link>
+            <Link href="/parties">
+              <Button variant="outline">
+                <Building2 className="w-4 h-4 mr-2" />
+                Manage Parties
+              </Button>
+            </Link>
+          </div>
+        </PageHeader>
 
         {/* Main Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">

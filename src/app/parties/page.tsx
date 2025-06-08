@@ -55,6 +55,8 @@ import {
   Home,
   AlertCircle,
 } from "lucide-react";
+import Loading from "@/components/ui/loading";
+import { PageHeader } from "@/components/ui/page-header";
 
 interface Party {
   id: number;
@@ -623,90 +625,86 @@ export default function PartiesPage() {
     );
   }
 
+  // Show loading screen when initially loading data
+  if (isAuthenticated && parties.length === 0 && !error && loading) {
+    return (
+      <Loading message="Loading Party Management..." size="lg" fullScreen />
+    );
+  }
+
   return (
     <div className="min-h-screen">
       <div className="container mx-auto px-4 py-2 max-w-7xl">
         {/* Header Section */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
-          <div>
-            <h1 className="text-4xl font-bold text-gray-900 mb-2 flex items-center gap-3">
-              <Users className="w-10 h-10 text-blue-600" />
-              Party Management
-            </h1>
-            <p className="text-gray-600 text-lg">
-              Comprehensive customer account and transaction management
-            </p>
-            {lastUpdated && (
-              <p className="text-sm text-gray-500 mt-1">
-                Last updated: {lastUpdated.toLocaleTimeString()}
-              </p>
-            )}
-          </div>
-
+        <PageHeader
+          title="Party Management"
+          description="Comprehensive customer account and transaction management"
+          icon={Users}
+          iconColor="text-purple-600"
+          lastUpdated={lastUpdated || undefined}
+        >
           {/* Connection Status & Actions */}
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
-              {connectionStatus === "online" ? (
-                <Wifi className="w-4 h-4 text-green-600" />
-              ) : connectionStatus === "slow" ? (
-                <Activity className="w-4 h-4 text-yellow-600" />
-              ) : (
-                <WifiOff className="w-4 h-4 text-red-600" />
-              )}
-              <span
-                className={`text-sm font-medium ${
-                  connectionStatus === "online"
-                    ? "text-green-600"
-                    : connectionStatus === "slow"
-                      ? "text-yellow-600"
-                      : "text-red-600"
-                }`}
-              >
-                {connectionStatus === "online"
-                  ? "Online"
+          <div className="flex items-center gap-2">
+            {connectionStatus === "online" ? (
+              <Wifi className="w-4 h-4 text-green-600" />
+            ) : connectionStatus === "slow" ? (
+              <Activity className="w-4 h-4 text-yellow-600" />
+            ) : (
+              <WifiOff className="w-4 h-4 text-red-600" />
+            )}
+            <span
+              className={`text-sm font-medium ${
+                connectionStatus === "online"
+                  ? "text-green-600"
                   : connectionStatus === "slow"
-                    ? "Slow Connection"
-                    : "Offline"}
-              </span>
-            </div>
-
-            <Button
-              onClick={handleRefresh}
-              variant="outline"
-              size="sm"
-              disabled={loading}
+                    ? "text-yellow-600"
+                    : "text-red-600"
+              }`}
             >
-              <RefreshCw
-                className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`}
-              />
-              Refresh
-            </Button>
-
-            <div className="flex gap-2">
-              <Button
-                onClick={() => setShowAddDialog(true)}
-                className="bg-blue-600 hover:bg-blue-700 text-white"
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                Add Party
-              </Button>
-              <Link href="/">
-                <Button variant="outline">
-                  <Home className="w-4 h-4 mr-2" />
-                  Dashboard
-                </Button>
-              </Link>
-              <Button
-                variant="outline"
-                onClick={handleLogout}
-                className="text-red-600 border-red-200 hover:bg-red-50"
-              >
-                <Lock className="w-4 h-4 mr-2" />
-                Logout
-              </Button>
-            </div>
+              {connectionStatus === "online"
+                ? "Online"
+                : connectionStatus === "slow"
+                  ? "Slow Connection"
+                  : "Offline"}
+            </span>
           </div>
-        </div>
+
+          <Button
+            onClick={handleRefresh}
+            variant="outline"
+            size="sm"
+            disabled={loading}
+          >
+            <RefreshCw
+              className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`}
+            />
+            Refresh
+          </Button>
+
+          <div className="flex gap-2">
+            <Button
+              onClick={() => setShowAddDialog(true)}
+              className="bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              Add Party
+            </Button>
+            <Link href="/">
+              <Button variant="outline">
+                <Home className="w-4 h-4 mr-2" />
+                Dashboard
+              </Button>
+            </Link>
+            <Button
+              variant="outline"
+              onClick={handleLogout}
+              className="text-red-600 border-red-200 hover:bg-red-50"
+            >
+              <Lock className="w-4 h-4 mr-2" />
+              Logout
+            </Button>
+          </div>
+        </PageHeader>
 
         {/* Main Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">

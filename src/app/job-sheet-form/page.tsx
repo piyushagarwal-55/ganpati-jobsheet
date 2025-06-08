@@ -27,6 +27,8 @@ import {
   UserPlus,
   Plus,
 } from "lucide-react";
+import Loading from "@/components/ui/loading";
+import { PageHeader } from "@/components/ui/page-header";
 import {
   Dialog,
   DialogContent,
@@ -167,6 +169,7 @@ export default function JobSheetForm() {
   const [newPartyName, setNewPartyName] = useState("");
   const [newPartyBalance, setNewPartyBalance] = useState("");
   const [newPaperType, setNewPaperType] = useState({ name: "", gsm: "" });
+  const [isLoading, setIsLoading] = useState(true);
 
   // Storage for preserving user input
   const [preservedValues, setPreservedValues] = useState({
@@ -178,8 +181,12 @@ export default function JobSheetForm() {
   });
 
   useEffect(() => {
-    fetchParties();
-    fetchPaperTypes();
+    const loadInitialData = async () => {
+      setIsLoading(true);
+      await Promise.all([fetchParties(), fetchPaperTypes()]);
+      setIsLoading(false);
+    };
+    loadInitialData();
   }, []);
 
   // Auto-calculate impressions when paper_sheet or job_type changes
@@ -385,8 +392,8 @@ export default function JobSheetForm() {
         paperType: paperType,
         paperSize: paperSize,
         paperGSM: paperGSM,
-        mainPaperTypeId: formData.paper_type_id,
-        mainGSM: formData.gsm,
+        mainPaperTypeId: formData.paper_type_id ?? null,
+        mainGSM: formData.gsm ?? null,
       });
 
       // If we have preserved values or current main form values, use them
@@ -1424,17 +1431,21 @@ export default function JobSheetForm() {
 
   const isStepValid = validateStep(currentStep);
 
+  // Show loading screen while fetching initial data
+  if (isLoading) {
+    return <Loading message="Loading Job Sheet Form..." size="lg" fullScreen />;
+  }
+
   return (
     <div className="space-y-8">
       {/* Header */}
-      <div className="flex flex-col mt-6 gap-2">
-        <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-          <FileText className="w-8 h-8 text-primary" />
-          Create Job Sheet
-        </h1>
-        <p className="text-muted-foreground">
-          Create a new job sheet for printing orders with step-by-step guidance.
-        </p>
+      <div className="mt-6">
+        <PageHeader
+          title="Create Job Sheet"
+          description="Create a new job sheet for printing orders with step-by-step guidance"
+          icon={FileText}
+          iconColor="text-green-600"
+        />
       </div>
 
       {/* Status Message */}

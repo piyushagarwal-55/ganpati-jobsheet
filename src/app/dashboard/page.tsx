@@ -42,6 +42,7 @@ import {
   Pie,
   ComposedChart,
 } from "recharts";
+import Loading from "@/components/ui/loading";
 import DashboardNavbar from "@/components/dashboard-navbar";
 
 interface DashboardMetrics {
@@ -553,15 +554,11 @@ export default function EnhancedDashboard() {
     return (
       <>
         <DashboardNavbar />
-        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600 mx-auto mb-4"></div>
-            <h2 className="text-xl font-semibold text-gray-700 mb-2">
-              Loading Dashboard
-            </h2>
-            <p className="text-gray-500">Calculating business metrics...</p>
-          </div>
-        </div>
+        <Loading
+          message="Calculating Business Metrics..."
+          size="lg"
+          fullScreen
+        />
       </>
     );
   }
