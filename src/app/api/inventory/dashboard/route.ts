@@ -32,12 +32,6 @@ export async function GET() {
         (sum, item) => sum + (item.current_quantity || 0),
         0
       ) || 0;
-    const totalValue =
-      inventoryItems?.reduce(
-        (sum, item) =>
-          sum + (item.current_quantity || 0) * (item.unit_cost || 0),
-        0
-      ) || 0;
     const lowStockItems =
       inventoryItems?.filter((item) => (item.current_quantity || 0) < 1000)
         .length || 0;
@@ -54,36 +48,32 @@ export async function GET() {
       inventoryItems?.filter((item) => (item.current_quantity || 0) < 1000) ||
       [];
 
-    // Get top parties by total value
+    // Get top parties by total quantity
     const partiesMap = new Map();
     inventoryItems?.forEach((item) => {
       const partyId = item.party_id;
       const partyName = item.parties?.name || `Party ${partyId}`;
-      const value = (item.current_quantity || 0) * (item.unit_cost || 0);
 
       if (partiesMap.has(partyId)) {
         const existing = partiesMap.get(partyId);
         existing.total_quantity += item.current_quantity || 0;
-        existing.total_value += value;
       } else {
         partiesMap.set(partyId, {
           party_id: partyId,
           party_name: partyName,
           total_quantity: item.current_quantity || 0,
-          total_value: value,
         });
       }
     });
 
     const topParties = Array.from(partiesMap.values())
-      .sort((a, b) => b.total_value - a.total_value)
+      .sort((a, b) => b.total_quantity - a.total_quantity)
       .slice(0, 5);
 
     const dashboardData = {
       stats: {
         totalItems,
         totalQuantity,
-        totalValue,
         lowStockItems,
         parties: uniqueParties,
         paperTypes: uniquePaperTypes,

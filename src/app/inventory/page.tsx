@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,26 +17,49 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   Package,
   Plus,
   Minus,
-  TrendingUp,
-  TrendingDown,
   AlertTriangle,
   CheckCircle,
   Users,
   FileText,
   BarChart3,
-  ArrowRight,
   Boxes,
   Calculator,
+  RefreshCw,
+  Home,
+  Filter,
+  Download,
+  Upload,
+  Search,
+  X,
 } from "lucide-react";
+import { PageHeader } from "@/components/ui/page-header";
 import {
   InventoryFormData,
   UNIT_OPTIONS,
+  PACKET_SIZE_OPTIONS,
   InventoryItem,
   InventoryTransaction,
 } from "@/types/inventory";
+import Loading from "@/components/ui/loading";
 
 interface Party {
   id: number;
@@ -59,7 +82,6 @@ export default function InventoryPage() {
     quantity: 0,
     unit_type: "packets",
     unit_size: 100,
-    unit_cost: 0,
     description: "",
   });
 
@@ -79,6 +101,26 @@ export default function InventoryPage() {
 
   // Custom packet size for packets unit type
   const [customPacketSize, setCustomPacketSize] = useState(100);
+
+  // Filter states
+  const [inventoryFilter, setInventoryFilter] = useState({
+    search: "",
+    party: "all",
+    paperType: "all",
+    stockLevel: "all", // all, low, normal, high
+  });
+
+  const [transactionFilter, setTransactionFilter] = useState({
+    search: "",
+    party: "all",
+    paperType: "all",
+    transactionType: "all", // all, in, out, adjustment
+    dateRange: "all", // all, today, week, month
+  });
+
+  // Dialog states
+  const [showImportDialog, setShowImportDialog] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
 
   // Fetch initial data
   useEffect(() => {
@@ -146,12 +188,97 @@ export default function InventoryPage() {
     }
   }, [formData.unit_type, customPacketSize]);
 
+  // Filtered inventory items
+  const filteredInventoryItems = useMemo(() => {
+    return inventoryItems.filter((item) => {
+      const matchesSearch =
+        !inventoryFilter.search ||
+        item.parties?.name
+          ?.toLowerCase()
+          .includes(inventoryFilter.search.toLowerCase()) ||
+        item.paper_type_name
+          .toLowerCase()
+          .includes(inventoryFilter.search.toLowerCase());
+
+      const matchesParty =
+        inventoryFilter.party === "all" ||
+        item.party_id.toString() === inventoryFilter.party;
+
+      const matchesPaperType =
+        inventoryFilter.paperType === "all" ||
+        item.paper_type_id?.toString() === inventoryFilter.paperType;
+
+      const matchesStockLevel =
+        inventoryFilter.stockLevel === "all" ||
+        (inventoryFilter.stockLevel === "low" &&
+          item.current_quantity < 1000) ||
+        (inventoryFilter.stockLevel === "normal" &&
+          item.current_quantity >= 1000 &&
+          item.current_quantity < 5000) ||
+        (inventoryFilter.stockLevel === "high" &&
+          item.current_quantity >= 5000);
+
+      return (
+        matchesSearch && matchesParty && matchesPaperType && matchesStockLevel
+      );
+    });
+  }, [inventoryItems, inventoryFilter]);
+
+  // Filtered transactions
+  const filteredTransactions = useMemo(() => {
+    return recentTransactions.filter((transaction) => {
+      const matchesSearch =
+        !transactionFilter.search ||
+        transaction.parties?.name
+          ?.toLowerCase()
+          .includes(transactionFilter.search.toLowerCase()) ||
+        transaction.inventory_items?.paper_type_name
+          ?.toLowerCase()
+          .includes(transactionFilter.search.toLowerCase());
+
+      const matchesParty =
+        transactionFilter.party === "all" ||
+        transaction.party_id.toString() === transactionFilter.party;
+
+      const matchesPaperType =
+        transactionFilter.paperType === "all" ||
+        transaction.paper_type_id?.toString() === transactionFilter.paperType;
+
+      const matchesTransactionType =
+        transactionFilter.transactionType === "all" ||
+        transaction.transaction_type === transactionFilter.transactionType;
+
+      const matchesDateRange = (() => {
+        if (transactionFilter.dateRange === "all") return true;
+        const transactionDate = new Date(transaction.created_at);
+        const now = new Date();
+
+        switch (transactionFilter.dateRange) {
+          case "today":
+            return transactionDate.toDateString() === now.toDateString();
+          case "week":
+            const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+            return transactionDate >= weekAgo;
+          case "month":
+            const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+            return transactionDate >= monthAgo;
+          default:
+            return true;
+        }
+      })();
+
+      return (
+        matchesSearch &&
+        matchesParty &&
+        matchesPaperType &&
+        matchesTransactionType &&
+        matchesDateRange
+      );
+    });
+  }, [recentTransactions, transactionFilter]);
+
   const calculateTotalSheets = () => {
     return formData.quantity * formData.unit_size;
-  };
-
-  const calculateTotalCost = () => {
-    return calculateTotalSheets() * formData.unit_cost;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -190,7 +317,6 @@ export default function InventoryPage() {
           quantity: 0,
           unit_type: "packets",
           unit_size: 100,
-          unit_cost: 0,
           description: "",
         });
 
@@ -226,37 +352,38 @@ export default function InventoryPage() {
     }
   };
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("en-IN", {
-      style: "currency",
-      currency: "INR",
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(amount);
-  };
-
   if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-primary mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading inventory...</p>
-        </div>
-      </div>
-    );
+    return <Loading />;
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
-      <div className="max-w-7xl mx-auto space-y-6">
-        {/* Header */}
-        <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-gray-900 mb-2">
-            Inventory Management
-          </h1>
-          <p className="text-lg text-gray-600">
-            Manage paper stock and track inventory movements
-          </p>
+    <div className="min-h-screen bg-white">
+      <div className="max-w-7xl mx-auto p-6 space-y-6">
+        {/* Page Header */}
+        <div className="flex items-center justify-between">
+          <PageHeader
+            title="Inventory Management"
+            description="Manage paper stock and track inventory movements"
+            icon={Package}
+          />
+          <div className="flex gap-3">
+            <Button
+              onClick={() => window.location.reload()}
+              variant="outline"
+              className="bg-white"
+            >
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Refresh
+            </Button>
+            <Button
+              onClick={() => (window.location.href = "/")}
+              variant="outline"
+              className="bg-white"
+            >
+              <Home className="w-4 h-4 mr-2" />
+              Dashboard
+            </Button>
+          </div>
         </div>
 
         {/* Message Alert */}
@@ -279,18 +406,24 @@ export default function InventoryPage() {
         )}
 
         <Tabs defaultValue="form" className="w-full">
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="form" className="flex items-center gap-2">
+          <TabsList className="grid w-full grid-cols-3 bg-gray-100">
+            <TabsTrigger
+              value="form"
+              className="flex items-center gap-2 data-[state=active]:bg-white"
+            >
               <Package className="w-4 h-4" />
               Add Stock
             </TabsTrigger>
-            <TabsTrigger value="inventory" className="flex items-center gap-2">
+            <TabsTrigger
+              value="inventory"
+              className="flex items-center gap-2 data-[state=active]:bg-white"
+            >
               <Boxes className="w-4 h-4" />
               Current Inventory
             </TabsTrigger>
             <TabsTrigger
               value="transactions"
-              className="flex items-center gap-2"
+              className="flex items-center gap-2 data-[state=active]:bg-white"
             >
               <FileText className="w-4 h-4" />
               Recent Transactions
@@ -302,14 +435,14 @@ export default function InventoryPage() {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               {/* Main Form */}
               <div className="lg:col-span-2">
-                <Card className="shadow-lg">
-                  <CardHeader className="bg-gradient-to-r from-blue-500 to-blue-600 text-white">
+                <Card>
+                  <CardHeader>
                     <CardTitle className="flex items-center gap-2">
                       <Package className="w-5 h-5" />
                       Inventory Transaction
                     </CardTitle>
                   </CardHeader>
-                  <CardContent className="p-6">
+                  <CardContent className="space-y-6">
                     <form onSubmit={handleSubmit} className="space-y-6">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {/* Party Selection */}
@@ -448,21 +581,27 @@ export default function InventoryPage() {
                         {/* Custom Packet Size (only for packets) */}
                         {formData.unit_type === "packets" && (
                           <div className="space-y-2">
-                            <Label htmlFor="packetSize">
-                              Packet Size (sheets) *
-                            </Label>
-                            <Input
-                              type="number"
-                              value={customPacketSize}
-                              onChange={(e) =>
-                                setCustomPacketSize(
-                                  parseInt(e.target.value) || 100
-                                )
+                            <Label htmlFor="packetSize">Packet Size *</Label>
+                            <Select
+                              value={customPacketSize.toString()}
+                              onValueChange={(value) =>
+                                setCustomPacketSize(parseInt(value))
                               }
-                              min="50"
-                              max="200"
-                              placeholder="100-200 sheets per packet"
-                            />
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select packet size" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {PACKET_SIZE_OPTIONS.map((option) => (
+                                  <SelectItem
+                                    key={option.value}
+                                    value={option.value.toString()}
+                                  >
+                                    {option.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
                           </div>
                         )}
 
@@ -481,26 +620,6 @@ export default function InventoryPage() {
                             min="1"
                             placeholder="Enter quantity"
                             required
-                          />
-                        </div>
-
-                        {/* Unit Cost */}
-                        <div className="space-y-2">
-                          <Label htmlFor="unitCost">
-                            Unit Cost (per sheet)
-                          </Label>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            value={formData.unit_cost}
-                            onChange={(e) =>
-                              setFormData((prev) => ({
-                                ...prev,
-                                unit_cost: parseFloat(e.target.value) || 0,
-                              }))
-                            }
-                            min="0"
-                            placeholder="0.00"
                           />
                         </div>
                       </div>
@@ -537,9 +656,9 @@ export default function InventoryPage() {
                               </span>
                             </div>
                             <div>
-                              <span className="text-gray-600">Total Cost:</span>
-                              <span className="font-semibold ml-2">
-                                {formatCurrency(calculateTotalCost())}
+                              <span className="text-gray-600">Unit Type:</span>
+                              <span className="font-semibold ml-2 capitalize">
+                                {formData.unit_type}
                               </span>
                             </div>
                           </div>
@@ -550,7 +669,7 @@ export default function InventoryPage() {
                       <Button
                         type="submit"
                         disabled={submitLoading}
-                        className="w-full bg-blue-600 hover:bg-blue-700"
+                        className="w-full"
                       >
                         {submitLoading ? (
                           <div className="flex items-center gap-2">
@@ -572,18 +691,18 @@ export default function InventoryPage() {
               {/* Current Stock Info */}
               <div className="space-y-6">
                 {/* Current Stock Card */}
-                <Card className="shadow-lg">
-                  <CardHeader className="bg-gradient-to-r from-green-500 to-green-600 text-white">
+                <Card>
+                  <CardHeader>
                     <CardTitle className="flex items-center gap-2">
                       <BarChart3 className="w-5 h-5" />
                       Current Stock
                     </CardTitle>
                   </CardHeader>
-                  <CardContent className="p-6">
+                  <CardContent>
                     {currentStock ? (
                       <div className="space-y-4">
                         <div className="text-center">
-                          <div className="text-3xl font-bold text-green-600">
+                          <div className="text-3xl font-bold text-primary">
                             {currentStock.current_quantity.toLocaleString()}
                           </div>
                           <div className="text-gray-600">sheets available</div>
@@ -600,21 +719,6 @@ export default function InventoryPage() {
                             <span className="text-gray-600">Available:</span>
                             <span className="font-semibold text-green-600">
                               {currentStock.available_quantity.toLocaleString()}
-                            </span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-gray-600">Unit Cost:</span>
-                            <span className="font-semibold">
-                              {formatCurrency(currentStock.unit_cost)}
-                            </span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-gray-600">Total Value:</span>
-                            <span className="font-semibold">
-                              {formatCurrency(
-                                currentStock.current_quantity *
-                                  currentStock.unit_cost
-                              )}
                             </span>
                           </div>
                         </div>
@@ -638,7 +742,7 @@ export default function InventoryPage() {
                 </Card>
 
                 {/* Quick Stats */}
-                <Card className="shadow-lg">
+                <Card>
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
                       <Users className="w-5 h-5" />
@@ -670,36 +774,209 @@ export default function InventoryPage() {
 
           {/* Current Inventory Tab */}
           <TabsContent value="inventory">
-            <Card className="shadow-lg">
+            <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Boxes className="w-5 h-5" />
-                  Current Inventory ({inventoryItems.length} items)
+                <CardTitle className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Boxes className="w-5 h-5" />
+                    Current Inventory ({filteredInventoryItems.length} of{" "}
+                    {inventoryItems.length} items)
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowImportDialog(true)}
+                    >
+                      <Upload className="w-4 h-4 mr-2" />
+                      Import
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const csvData = filteredInventoryItems.map((item) => ({
+                          "Party Name":
+                            item.parties?.name || `Party ${item.party_id}`,
+                          "Paper Type": item.paper_type_name,
+                          GSM: item.paper_types?.gsm || "",
+                          "Current Stock": item.current_quantity,
+                          Available: item.available_quantity,
+                          Reserved: item.reserved_quantity,
+                        }));
+                        const csvContent =
+                          Object.keys(csvData[0] || {}).join(",") +
+                          "\n" +
+                          csvData
+                            .map((row) => Object.values(row).join(","))
+                            .join("\n");
+                        const blob = new Blob([csvContent], {
+                          type: "text/csv",
+                        });
+                        const url = window.URL.createObjectURL(blob);
+                        const a = document.createElement("a");
+                        a.href = url;
+                        a.download = "inventory-report.csv";
+                        a.click();
+                      }}
+                    >
+                      <Download className="w-4 h-4 mr-2" />
+                      Export
+                    </Button>
+                  </div>
                 </CardTitle>
               </CardHeader>
-              <CardContent>
+              <CardContent className="space-y-4">
+                {/* Inventory Filters */}
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 p-4 bg-gray-50 rounded-lg">
+                  <div className="space-y-2">
+                    <Label htmlFor="inventorySearch">Search</Label>
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                      <Input
+                        id="inventorySearch"
+                        placeholder="Search party or paper type..."
+                        value={inventoryFilter.search}
+                        onChange={(e) =>
+                          setInventoryFilter((prev) => ({
+                            ...prev,
+                            search: e.target.value,
+                          }))
+                        }
+                        className="pl-10"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="inventoryParty">Party</Label>
+                    <Select
+                      value={inventoryFilter.party}
+                      onValueChange={(value) =>
+                        setInventoryFilter((prev) => ({
+                          ...prev,
+                          party: value,
+                        }))
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="All parties" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All parties</SelectItem>
+                        {parties.map((party) => (
+                          <SelectItem
+                            key={party.id}
+                            value={party.id.toString()}
+                          >
+                            {party.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="inventoryPaperType">Paper Type</Label>
+                    <Select
+                      value={inventoryFilter.paperType}
+                      onValueChange={(value) =>
+                        setInventoryFilter((prev) => ({
+                          ...prev,
+                          paperType: value,
+                        }))
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="All paper types" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All paper types</SelectItem>
+                        {paperTypes.map((type) => (
+                          <SelectItem key={type.id} value={type.id.toString()}>
+                            {type.name} {type.gsm && `(${type.gsm} GSM)`}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="inventoryStockLevel">Stock Level</Label>
+                    <Select
+                      value={inventoryFilter.stockLevel}
+                      onValueChange={(value) =>
+                        setInventoryFilter((prev) => ({
+                          ...prev,
+                          stockLevel: value,
+                        }))
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All levels</SelectItem>
+                        <SelectItem value="low">
+                          Low stock (&lt; 1,000)
+                        </SelectItem>
+                        <SelectItem value="normal">
+                          Normal (1,000 - 5,000)
+                        </SelectItem>
+                        <SelectItem value="high">
+                          High stock (&gt; 5,000)
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Clear Filters Button */}
+                  {(inventoryFilter.search ||
+                    inventoryFilter.party !== "all" ||
+                    inventoryFilter.paperType !== "all" ||
+                    inventoryFilter.stockLevel !== "all") && (
+                    <div className="flex items-end">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() =>
+                          setInventoryFilter({
+                            search: "",
+                            party: "all",
+                            paperType: "all",
+                            stockLevel: "all",
+                          })
+                        }
+                      >
+                        <X className="w-4 h-4 mr-2" />
+                        Clear Filters
+                      </Button>
+                    </div>
+                  )}
+                </div>
+
                 <div className="overflow-x-auto">
-                  <table className="w-full table-auto">
-                    <thead>
-                      <tr className="border-b">
-                        <th className="text-left p-2">Party</th>
-                        <th className="text-left p-2">Paper Type</th>
-                        <th className="text-right p-2">Current Stock</th>
-                        <th className="text-right p-2">Available</th>
-                        <th className="text-right p-2">Unit Cost</th>
-                        <th className="text-right p-2">Total Value</th>
-                        <th className="text-center p-2">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {inventoryItems.map((item) => (
-                        <tr key={item.id} className="border-b hover:bg-gray-50">
-                          <td className="p-2">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Party</TableHead>
+                        <TableHead>Paper Type</TableHead>
+                        <TableHead className="text-right">
+                          Current Stock
+                        </TableHead>
+                        <TableHead className="text-right">Available</TableHead>
+                        <TableHead className="text-center">Status</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredInventoryItems.map((item) => (
+                        <TableRow key={item.id}>
+                          <TableCell>
                             <div className="font-medium">
                               {item.parties?.name || `Party ${item.party_id}`}
                             </div>
-                          </td>
-                          <td className="p-2">
+                          </TableCell>
+                          <TableCell>
                             <div className="font-medium">
                               {item.paper_type_name}
                             </div>
@@ -708,22 +985,14 @@ export default function InventoryPage() {
                                 {item.paper_types.gsm} GSM
                               </div>
                             )}
-                          </td>
-                          <td className="p-2 text-right font-mono">
+                          </TableCell>
+                          <TableCell className="text-right font-mono">
                             {item.current_quantity.toLocaleString()}
-                          </td>
-                          <td className="p-2 text-right font-mono text-green-600">
+                          </TableCell>
+                          <TableCell className="text-right font-mono text-green-600">
                             {item.available_quantity.toLocaleString()}
-                          </td>
-                          <td className="p-2 text-right font-mono">
-                            {formatCurrency(item.unit_cost)}
-                          </td>
-                          <td className="p-2 text-right font-mono font-semibold">
-                            {formatCurrency(
-                              item.current_quantity * item.unit_cost
-                            )}
-                          </td>
-                          <td className="p-2 text-center">
+                          </TableCell>
+                          <TableCell className="text-center">
                             {item.current_quantity < 1000 ? (
                               <Badge variant="destructive" className="text-xs">
                                 Low Stock
@@ -733,18 +1002,15 @@ export default function InventoryPage() {
                                 Normal
                               </Badge>
                             ) : (
-                              <Badge
-                                variant="default"
-                                className="text-xs bg-green-600"
-                              >
+                              <Badge className="text-xs bg-green-600 hover:bg-green-700">
                                 Good Stock
                               </Badge>
                             )}
-                          </td>
-                        </tr>
+                          </TableCell>
+                        </TableRow>
                       ))}
-                    </tbody>
-                  </table>
+                    </TableBody>
+                  </Table>
                 </div>
               </CardContent>
             </Card>
@@ -752,35 +1018,183 @@ export default function InventoryPage() {
 
           {/* Recent Transactions Tab */}
           <TabsContent value="transactions">
-            <Card className="shadow-lg">
+            <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <FileText className="w-5 h-5" />
-                  Recent Transactions ({recentTransactions.length})
+                  Recent Transactions ({filteredTransactions.length} of{" "}
+                  {recentTransactions.length})
                 </CardTitle>
               </CardHeader>
-              <CardContent>
+              <CardContent className="space-y-4">
+                {/* Transaction Filters */}
+                <div className="grid grid-cols-1 md:grid-cols-5 gap-4 p-4 bg-gray-50 rounded-lg">
+                  <div className="space-y-2">
+                    <Label htmlFor="transactionSearch">Search</Label>
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                      <Input
+                        id="transactionSearch"
+                        placeholder="Search party or paper type..."
+                        value={transactionFilter.search}
+                        onChange={(e) =>
+                          setTransactionFilter((prev) => ({
+                            ...prev,
+                            search: e.target.value,
+                          }))
+                        }
+                        className="pl-10"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="transactionParty">Party</Label>
+                    <Select
+                      value={transactionFilter.party}
+                      onValueChange={(value) =>
+                        setTransactionFilter((prev) => ({
+                          ...prev,
+                          party: value,
+                        }))
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="All parties" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All parties</SelectItem>
+                        {parties.map((party) => (
+                          <SelectItem
+                            key={party.id}
+                            value={party.id.toString()}
+                          >
+                            {party.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="transactionPaperType">Paper Type</Label>
+                    <Select
+                      value={transactionFilter.paperType}
+                      onValueChange={(value) =>
+                        setTransactionFilter((prev) => ({
+                          ...prev,
+                          paperType: value,
+                        }))
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="All paper types" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All paper types</SelectItem>
+                        {paperTypes.map((type) => (
+                          <SelectItem key={type.id} value={type.id.toString()}>
+                            {type.name} {type.gsm && `(${type.gsm} GSM)`}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="transactionType">Transaction Type</Label>
+                    <Select
+                      value={transactionFilter.transactionType}
+                      onValueChange={(value) =>
+                        setTransactionFilter((prev) => ({
+                          ...prev,
+                          transactionType: value,
+                        }))
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All types</SelectItem>
+                        <SelectItem value="in">Stock In</SelectItem>
+                        <SelectItem value="out">Stock Out</SelectItem>
+                        <SelectItem value="adjustment">Adjustment</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="transactionDateRange">Date Range</Label>
+                    <Select
+                      value={transactionFilter.dateRange}
+                      onValueChange={(value) =>
+                        setTransactionFilter((prev) => ({
+                          ...prev,
+                          dateRange: value,
+                        }))
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All time</SelectItem>
+                        <SelectItem value="today">Today</SelectItem>
+                        <SelectItem value="week">Last 7 days</SelectItem>
+                        <SelectItem value="month">Last 30 days</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Clear Filters Button */}
+                  {(transactionFilter.search ||
+                    transactionFilter.party !== "all" ||
+                    transactionFilter.paperType !== "all" ||
+                    transactionFilter.transactionType !== "all" ||
+                    transactionFilter.dateRange !== "all") && (
+                    <div className="flex items-end">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() =>
+                          setTransactionFilter({
+                            search: "",
+                            party: "all",
+                            paperType: "all",
+                            transactionType: "all",
+                            dateRange: "all",
+                          })
+                        }
+                      >
+                        <X className="w-4 h-4 mr-2" />
+                        Clear Filters
+                      </Button>
+                    </div>
+                  )}
+                </div>
+
                 <div className="overflow-x-auto">
-                  <table className="w-full table-auto">
-                    <thead>
-                      <tr className="border-b">
-                        <th className="text-left p-2">Date</th>
-                        <th className="text-left p-2">Party</th>
-                        <th className="text-left p-2">Paper Type</th>
-                        <th className="text-center p-2">Type</th>
-                        <th className="text-right p-2">Quantity</th>
-                        <th className="text-right p-2">Total Sheets</th>
-                        <th className="text-right p-2">Cost</th>
-                        <th className="text-right p-2">Balance After</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {recentTransactions.map((transaction) => (
-                        <tr
-                          key={transaction.id}
-                          className="border-b hover:bg-gray-50"
-                        >
-                          <td className="p-2">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Date</TableHead>
+                        <TableHead>Party</TableHead>
+                        <TableHead>Paper Type</TableHead>
+                        <TableHead className="text-center">Type</TableHead>
+                        <TableHead className="text-right">Quantity</TableHead>
+                        <TableHead className="text-right">
+                          Total Sheets
+                        </TableHead>
+                        <TableHead className="text-right">
+                          Balance After
+                        </TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredTransactions.map((transaction) => (
+                        <TableRow key={transaction.id}>
+                          <TableCell>
                             <div className="text-sm">
                               {new Date(
                                 transaction.created_at
@@ -791,21 +1205,21 @@ export default function InventoryPage() {
                                 transaction.created_at
                               ).toLocaleTimeString()}
                             </div>
-                          </td>
-                          <td className="p-2">
+                          </TableCell>
+                          <TableCell>
                             <div className="font-medium">
                               {transaction.parties?.name ||
                                 `Party ${transaction.party_id}`}
                             </div>
-                          </td>
-                          <td className="p-2">
+                          </TableCell>
+                          <TableCell>
                             <div className="font-medium">
                               {transaction.inventory_items?.paper_type_name}
                             </div>
-                          </td>
-                          <td className="p-2 text-center">
+                          </TableCell>
+                          <TableCell className="text-center">
                             {transaction.transaction_type === "in" ? (
-                              <Badge className="bg-green-600 text-xs">
+                              <Badge className="bg-green-600 hover:bg-green-700 text-xs">
                                 <Plus className="w-3 h-3 mr-1" />
                                 IN
                               </Badge>
@@ -820,11 +1234,11 @@ export default function InventoryPage() {
                                 ADJ
                               </Badge>
                             )}
-                          </td>
-                          <td className="p-2 text-right font-mono">
+                          </TableCell>
+                          <TableCell className="text-right font-mono">
                             {transaction.quantity} {transaction.unit_type}
-                          </td>
-                          <td className="p-2 text-right font-mono">
+                          </TableCell>
+                          <TableCell className="text-right font-mono">
                             <span
                               className={
                                 transaction.transaction_type === "out"
@@ -839,22 +1253,77 @@ export default function InventoryPage() {
                                 transaction.total_sheets
                               ).toLocaleString()}
                             </span>
-                          </td>
-                          <td className="p-2 text-right font-mono">
-                            {formatCurrency(transaction.total_cost)}
-                          </td>
-                          <td className="p-2 text-right font-mono font-semibold">
+                          </TableCell>
+                          <TableCell className="text-right font-mono font-semibold">
                             {transaction.balance_after.toLocaleString()}
-                          </td>
-                        </tr>
+                          </TableCell>
+                        </TableRow>
                       ))}
-                    </tbody>
-                  </table>
+                    </TableBody>
+                  </Table>
                 </div>
               </CardContent>
             </Card>
           </TabsContent>
         </Tabs>
+
+        {/* Import Dialog */}
+        <Dialog open={showImportDialog} onOpenChange={setShowImportDialog}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Import Inventory Data</DialogTitle>
+              <DialogDescription>
+                Upload a CSV file to import inventory data. The file should have
+                columns: Party Name, Paper Type, GSM, Quantity, Unit Type, Unit
+                Size.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="csvFile">Select CSV File</Label>
+                <Input
+                  id="csvFile"
+                  type="file"
+                  accept=".csv"
+                  onChange={(e) => setImportFile(e.target.files?.[0] || null)}
+                />
+              </div>
+              {importFile && (
+                <Alert>
+                  <AlertDescription>
+                    Selected file: {importFile.name} (
+                    {(importFile.size / 1024).toFixed(1)} KB)
+                  </AlertDescription>
+                </Alert>
+              )}
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowImportDialog(false);
+                  setImportFile(null);
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={() => {
+                  // TODO: Implement CSV import functionality
+                  setMessage({
+                    type: "success",
+                    text: "Import functionality coming soon!",
+                  });
+                  setShowImportDialog(false);
+                  setImportFile(null);
+                }}
+                disabled={!importFile}
+              >
+                Import Data
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );

@@ -65,7 +65,6 @@ export async function POST(request: Request) {
       quantity,
       unit_type,
       unit_size,
-      unit_cost = 0,
       description = "",
     } = body;
 
@@ -74,7 +73,6 @@ export async function POST(request: Request) {
       transaction_type === "out"
         ? -Math.abs(quantity * unit_size)
         : Math.abs(quantity * unit_size);
-    const total_cost = Math.abs(total_sheets) * unit_cost;
 
     // Get paper type name
     const { data: paperType } = await supabase
@@ -100,7 +98,6 @@ export async function POST(request: Request) {
           paper_type_id,
           paper_type_name: paperType?.name || "Unknown",
           current_quantity: 0,
-          unit_cost,
         })
         .select("id")
         .single();
@@ -140,8 +137,6 @@ export async function POST(request: Request) {
         unit_type,
         unit_size,
         total_sheets,
-        unit_cost,
-        total_cost,
         description,
         balance_after,
         created_by: "Admin", // TODO: Get from auth context
