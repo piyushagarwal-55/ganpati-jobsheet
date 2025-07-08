@@ -143,8 +143,17 @@ export default function InventoryPage() {
             transactionsRes.json(),
           ]);
 
+        console.log("Parties data:", partiesData);
         setParties(Array.isArray(partiesData) ? partiesData : []);
-        setPaperTypes(Array.isArray(paperTypesData) ? paperTypesData : []);
+
+        // Handle paper types data properly
+        const processedPaperTypes = paperTypesData?.data || paperTypesData;
+        console.log("Paper types response:", paperTypesData);
+        console.log("Processed paper types:", processedPaperTypes);
+        setPaperTypes(
+          Array.isArray(processedPaperTypes) ? processedPaperTypes : []
+        );
+
         setInventoryItems(inventoryData.success ? inventoryData.data : []);
         setRecentTransactions(
           transactionsData.success ? transactionsData.data : []
@@ -284,7 +293,11 @@ export default function InventoryPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!formData.party_id || !formData.paper_type_id || !formData.quantity) {
+    if (
+      formData.party_id === 0 ||
+      formData.paper_type_id === 0 ||
+      !formData.quantity
+    ) {
       setMessage({ type: "error", text: "Please fill in all required fields" });
       return;
     }
@@ -405,6 +418,43 @@ export default function InventoryPage() {
           </Alert>
         )}
 
+        {/* Warning for empty data */}
+        {!loading && (parties.length === 0 || paperTypes.length === 0) && (
+          <Alert className="bg-yellow-50 border-yellow-200">
+            <AlertTriangle className="h-4 w-4 text-yellow-600" />
+            <AlertDescription className="text-yellow-800">
+              {parties.length === 0 && paperTypes.length === 0
+                ? "No parties or paper types found. Please add some parties and paper types before managing inventory."
+                : parties.length === 0
+                  ? "No parties found. Please add some parties first."
+                  : "No paper types found. Please add some paper types first."}
+              <div className="mt-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => (window.location.href = "/parties")}
+                  className="mr-2"
+                >
+                  Manage Parties
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    // For now, just show a message that paper types management is coming soon
+                    setMessage({
+                      type: "success",
+                      text: "Paper types can be added via the database or API. Management UI coming soon!",
+                    });
+                  }}
+                >
+                  Add Paper Types
+                </Button>
+              </div>
+            </AlertDescription>
+          </Alert>
+        )}
+
         <Tabs defaultValue="form" className="w-full">
           <TabsList className="grid w-full grid-cols-3 bg-gray-100">
             <TabsTrigger
@@ -449,7 +499,11 @@ export default function InventoryPage() {
                         <div className="space-y-2">
                           <Label htmlFor="party">Party Name *</Label>
                           <Select
-                            value={formData.party_id.toString()}
+                            value={
+                              formData.party_id === 0
+                                ? ""
+                                : formData.party_id.toString()
+                            }
                             onValueChange={(value) =>
                               setFormData((prev) => ({
                                 ...prev,
@@ -461,14 +515,22 @@ export default function InventoryPage() {
                               <SelectValue placeholder="Select a party" />
                             </SelectTrigger>
                             <SelectContent>
-                              {parties.map((party) => (
-                                <SelectItem
-                                  key={party.id}
-                                  value={party.id.toString()}
-                                >
-                                  {party.name}
+                              {parties.length === 0 ? (
+                                <SelectItem value="no-parties" disabled>
+                                  {loading
+                                    ? "Loading parties..."
+                                    : "No parties available"}
                                 </SelectItem>
-                              ))}
+                              ) : (
+                                parties.map((party) => (
+                                  <SelectItem
+                                    key={party.id}
+                                    value={party.id.toString()}
+                                  >
+                                    {party.name}
+                                  </SelectItem>
+                                ))
+                              )}
                             </SelectContent>
                           </Select>
                         </div>
@@ -477,7 +539,11 @@ export default function InventoryPage() {
                         <div className="space-y-2">
                           <Label htmlFor="paperType">Paper Type *</Label>
                           <Select
-                            value={formData.paper_type_id.toString()}
+                            value={
+                              formData.paper_type_id === 0
+                                ? ""
+                                : formData.paper_type_id.toString()
+                            }
                             onValueChange={(value) =>
                               setFormData((prev) => ({
                                 ...prev,
@@ -489,14 +555,23 @@ export default function InventoryPage() {
                               <SelectValue placeholder="Select paper type" />
                             </SelectTrigger>
                             <SelectContent>
-                              {paperTypes.map((type) => (
-                                <SelectItem
-                                  key={type.id}
-                                  value={type.id.toString()}
-                                >
-                                  {type.name} {type.gsm && `(${type.gsm} GSM)`}
+                              {paperTypes.length === 0 ? (
+                                <SelectItem value="no-paper-types" disabled>
+                                  {loading
+                                    ? "Loading paper types..."
+                                    : "No paper types available"}
                                 </SelectItem>
-                              ))}
+                              ) : (
+                                paperTypes.map((type) => (
+                                  <SelectItem
+                                    key={type.id}
+                                    value={type.id.toString()}
+                                  >
+                                    {type.name}{" "}
+                                    {type.gsm && `(${type.gsm} GSM)`}
+                                  </SelectItem>
+                                ))
+                              )}
                             </SelectContent>
                           </Select>
                         </div>
