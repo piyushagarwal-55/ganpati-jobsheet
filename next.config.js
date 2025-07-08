@@ -18,6 +18,13 @@ const nextConfig = {
     return config;
   },
 
+  // Experimental features for WebSocket handling
+  experimental: {
+    serverActions: {
+      bodySizeLimit: "2mb",
+    },
+  },
+
   // Security headers
   async headers() {
     return [
@@ -55,8 +62,16 @@ const nextConfig = {
   },
 };
 
+// Configure experimental features
+nextConfig.experimental = {
+  serverActions: {
+    bodySizeLimit: "2mb",
+  },
+};
+
 if (process.env.NEXT_PUBLIC_TEMPO) {
-  nextConfig["experimental"] = {
+  nextConfig.experimental = {
+    ...nextConfig.experimental,
     // NextJS 13.4.8 up to 14.1.3:
     // swcPlugins: [[require.resolve("tempo-devtools/swc/0.86"), {}]],
     // NextJS 14.1.3 to 14.2.11:

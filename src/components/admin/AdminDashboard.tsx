@@ -77,6 +77,7 @@ export default function EnhancedAdminDashboard() {
     null
   );
   const [statusFilter, setStatusFilter] = useState("all");
+  const [partyFilter, setPartyFilter] = useState("all");
   const [searchTerm, setSearchTerm] = useState("");
 
   // Fetch parties and transactions data
@@ -294,6 +295,9 @@ export default function EnhancedAdminDashboard() {
           searchTerm={searchTerm}
           dateFilter={statusFilter}
           setDateFilter={setStatusFilter}
+          partyFilter={partyFilter}
+          setPartyFilter={setPartyFilter}
+          parties={parties}
           updateJobSheet={updateJobSheet}
           deleteJobSheet={deleteJobSheet}
           addNote={addNote}

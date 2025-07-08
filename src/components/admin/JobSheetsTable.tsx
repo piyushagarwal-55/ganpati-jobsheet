@@ -54,6 +54,7 @@ import {
   Eye,
   MessageSquare,
   User,
+  Users,
   FileSpreadsheet,
   RefreshCw,
 } from "lucide-react";
@@ -66,6 +67,9 @@ interface JobSheetsTableProps {
   searchTerm: string;
   dateFilter: string;
   setDateFilter: (filter: string) => void;
+  partyFilter: string;
+  setPartyFilter: (filter: string) => void;
+  parties: Array<{ id: number; name: string; balance: number }>;
   updateJobSheet: (
     id: number,
     updates: Partial<JobSheet>
@@ -92,6 +96,9 @@ export default function JobSheetsTable({
   searchTerm,
   dateFilter,
   setDateFilter,
+  partyFilter,
+  setPartyFilter,
+  parties,
   updateJobSheet,
   deleteJobSheet,
   addNote,
@@ -150,7 +157,13 @@ export default function JobSheetsTable({
       }
     })();
 
-    return matchesSearch && matchesDate;
+    const matchesParty = (() => {
+      if (partyFilter === "all") return true;
+      if (partyFilter === "no-party") return !sheet.party_name;
+      return sheet.party_name === partyFilter;
+    })();
+
+    return matchesSearch && matchesDate && matchesParty;
   });
 
   // For now, treat all job sheets as active until soft delete is properly implemented
@@ -406,6 +419,23 @@ export default function JobSheetsTable({
                 </SelectContent>
               </Select>
 
+              {/* Party Filter */}
+              <Select value={partyFilter} onValueChange={setPartyFilter}>
+                <SelectTrigger className="w-full sm:w-[160px]">
+                  <Users className="w-4 h-4 mr-2" />
+                  <SelectValue placeholder="Filter by party" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Parties</SelectItem>
+                  <SelectItem value="no-party">No Party Assigned</SelectItem>
+                  {parties.map((party) => (
+                    <SelectItem key={party.id} value={party.name}>
+                      {party.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
               {/* New Job Sheet Button */}
               <Button
                 onClick={() => (window.location.href = "/job-sheet-form")}
@@ -419,15 +449,37 @@ export default function JobSheetsTable({
         </CardHeader>
 
         <CardContent>
-          {/* Search Results Info */}
-          {searchTerm && (
+          {/* Search and Filter Results Info */}
+          {(searchTerm || dateFilter !== "all" || partyFilter !== "all") && (
             <div className="mb-4 p-3 bg-primary/5 border border-primary/20 rounded-lg">
               <div className="flex items-center gap-2 text-primary">
                 <Search className="w-4 h-4" />
-                <span className="text-sm font-medium">
-                  Showing {filteredJobSheets.length} results for "{searchTerm}"
-                </span>
+                <div className="text-sm font-medium">
+                  <span>Showing {filteredJobSheets.length} results</span>
+                  {searchTerm && <span> for "{searchTerm}"</span>}
+                  {dateFilter !== "all" && (
+                    <span> • Date: {dateFilter}</span>
+                  )}
+                  {partyFilter !== "all" && (
+                    <span> • Party: {partyFilter === "no-party" ? "No Party" : partyFilter}</span>
+                  )}
+                </div>
               </div>
+              {(dateFilter !== "all" || partyFilter !== "all") && (
+                <div className="mt-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setDateFilter("all");
+                      setPartyFilter("all");
+                    }}
+                    className="h-7 px-2 text-xs"
+                  >
+                    Clear Filters
+                  </Button>
+                </div>
+              )}
             </div>
           )}
 
