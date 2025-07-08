@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { createClient } from "../../../../../supabase/server";
 
+// Force dynamic rendering for this route
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   try {
     const supabase = await createClient();
@@ -8,7 +11,8 @@ export async function GET() {
     // Get all inventory transactions with related data
     const { data: transactions, error } = await supabase
       .from("inventory_transactions")
-      .select(`
+      .select(
+        `
         *,
         inventory_items (
           id,
@@ -25,7 +29,8 @@ export async function GET() {
           name,
           gsm
         )
-      `)
+      `
+      )
       .order("created_at", { ascending: false })
       .limit(100);
 
@@ -54,4 +59,4 @@ export async function GET() {
       { status: 500 }
     );
   }
-} 
+}

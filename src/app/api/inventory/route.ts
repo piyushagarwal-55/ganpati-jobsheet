@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { createClient } from "../../../../supabase/server";
 
+// Force dynamic rendering for this route
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
   try {
     const supabase = await createClient();
@@ -165,6 +168,81 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     console.error("POST error:", error);
+    return NextResponse.json(
+      {
+        success: false,
+        error: "Internal server error",
+      },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(request: Request) {
+  try {
+    const supabase = await createClient();
+    const url = new URL(request.url);
+    const itemId = url.searchParams.get("id");
+    const deleteType = url.searchParams.get("type") || "item"; // 'item' or 'transaction'
+
+    if (!itemId) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Item ID is required",
+        },
+        { status: 400 }
+      );
+    }
+
+    if (deleteType === "transaction") {
+      // Delete a specific transaction
+      const { error: deleteError } = await supabase
+        .from("inventory_transactions")
+        .delete()
+        .eq("id", itemId);
+
+      if (deleteError) {
+        console.error("Error deleting transaction:", deleteError);
+        return NextResponse.json(
+          {
+            success: false,
+            error: deleteError.message,
+          },
+          { status: 500 }
+        );
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: "Transaction deleted successfully",
+      });
+    } else {
+      // Delete inventory item and all its transactions
+      const { error: deleteError } = await supabase
+        .from("inventory_items")
+        .delete()
+        .eq("id", itemId);
+
+      if (deleteError) {
+        console.error("Error deleting inventory item:", deleteError);
+        return NextResponse.json(
+          {
+            success: false,
+            error: deleteError.message,
+          },
+          { status: 500 }
+        );
+      }
+
+      return NextResponse.json({
+        success: true,
+        message:
+          "Inventory item and all related transactions deleted successfully",
+      });
+    }
+  } catch (error) {
+    console.error("DELETE error:", error);
     return NextResponse.json(
       {
         success: false,

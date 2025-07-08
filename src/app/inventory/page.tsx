@@ -33,6 +33,24 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   Package,
   Plus,
   Minus,
@@ -50,6 +68,9 @@ import {
   Upload,
   Search,
   X,
+  Trash2,
+  MoreHorizontal,
+  Eye,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import {
@@ -59,6 +80,7 @@ import {
   InventoryItem,
   InventoryTransaction,
 } from "@/types/inventory";
+import { useInventory } from "@/hooks/useInventory";
 import Loading from "@/components/ui/loading";
 
 // GSM options from job sheet form
@@ -82,6 +104,20 @@ interface PaperType {
 }
 
 export default function InventoryPage() {
+  // Use the inventory hook
+  const {
+    inventoryItems,
+    transactions: recentTransactions,
+    loading,
+    submitLoading,
+    error,
+    addInventoryTransaction,
+    deleteInventoryItem,
+    deleteTransaction,
+    refreshData,
+    getStockByPartyAndPaper,
+  } = useInventory();
+
   const [formData, setFormData] = useState<InventoryFormData>({
     party_id: 0,
     paper_type_id: 0,
@@ -95,16 +131,17 @@ export default function InventoryPage() {
 
   const [parties, setParties] = useState<Party[]>([]);
   const [paperTypes, setPaperTypes] = useState<PaperType[]>([]);
-  const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
-  const [recentTransactions, setRecentTransactions] = useState<
-    InventoryTransaction[]
-  >([]);
   const [currentStock, setCurrentStock] = useState<InventoryItem | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [submitLoading, setSubmitLoading] = useState(false);
   const [message, setMessage] = useState<{
     type: "success" | "error";
     text: string;
+  } | null>(null);
+
+  // Delete confirmation states
+  const [deleteConfirmation, setDeleteConfirmation] = useState<{
+    type: "item" | "transaction";
+    id: number;
+    name: string;
   } | null>(null);
 
   // Custom packet size for packets unit type
@@ -140,26 +177,19 @@ export default function InventoryPage() {
   const [showNewPaperTypeDialog, setShowNewPaperTypeDialog] = useState(false);
   const [newPaperType, setNewPaperType] = useState({ name: "", gsm: "" });
 
-  // Fetch initial data
+  // Fetch initial data (parties and paper types only, inventory data is handled by hook)
   useEffect(() => {
     const fetchData = async () => {
-      setLoading(true);
       try {
-        const [partiesRes, paperTypesRes, inventoryRes, transactionsRes] =
-          await Promise.all([
-            fetch("/api/parties"),
-            fetch("/api/paper-types"),
-            fetch("/api/inventory"),
-            fetch("/api/inventory/transactions"),
-          ]);
+        const [partiesRes, paperTypesRes] = await Promise.all([
+          fetch("/api/parties"),
+          fetch("/api/paper-types"),
+        ]);
 
-        const [partiesData, paperTypesData, inventoryData, transactionsData] =
-          await Promise.all([
-            partiesRes.json(),
-            paperTypesRes.json(),
-            inventoryRes.json(),
-            transactionsRes.json(),
-          ]);
+        const [partiesData, paperTypesData] = await Promise.all([
+          partiesRes.json(),
+          paperTypesRes.json(),
+        ]);
 
         console.log("Parties data:", partiesData);
         setParties(Array.isArray(partiesData) ? partiesData : []);
@@ -171,36 +201,71 @@ export default function InventoryPage() {
         setPaperTypes(
           Array.isArray(processedPaperTypes) ? processedPaperTypes : []
         );
-
-        setInventoryItems(inventoryData.success ? inventoryData.data : []);
-        setRecentTransactions(
-          transactionsData.success ? transactionsData.data : []
-        );
       } catch (error) {
         console.error("Error fetching data:", error);
         setMessage({ type: "error", text: "Failed to load data" });
-      } finally {
-        setLoading(false);
       }
     };
 
     fetchData();
   }, []);
 
-  // Update current stock when party, paper type, and GSM change
+    // Update current stock when party, paper type, and GSM change
   useEffect(() => {
-    if (formData.party_id && formData.paper_type_id) {
-      const stock = inventoryItems.find(
+    if (formData.party_id > 0 && formData.paper_type_id > 0 && formData.gsm) {
+      // Find exact match including GSM
+      const exactStock = inventoryItems.find(
         (item) =>
           item.party_id === formData.party_id &&
           item.paper_type_id === formData.paper_type_id &&
           item.gsm === formData.gsm
       );
-      setCurrentStock(stock || null);
+      
+      setCurrentStock(exactStock || null);
     } else {
       setCurrentStock(null);
     }
   }, [formData.party_id, formData.paper_type_id, formData.gsm, inventoryItems]);
+
+  // Handle delete confirmation
+  const handleDeleteConfirm = async () => {
+    if (!deleteConfirmation) return;
+
+    try {
+      let result;
+      if (deleteConfirmation.type === "item") {
+        result = await deleteInventoryItem(deleteConfirmation.id);
+      } else {
+        result = await deleteTransaction(deleteConfirmation.id);
+      }
+
+      if (result.success) {
+        setMessage({
+          type: "success",
+          text: `${deleteConfirmation.type === "item" ? "Inventory item" : "Transaction"} deleted successfully!`,
+        });
+      } else {
+        setMessage({
+          type: "error",
+          text: result.error || "Failed to delete",
+        });
+      }
+    } catch (error) {
+      setMessage({
+        type: "error",
+        text: "An error occurred while deleting",
+      });
+    } finally {
+      setDeleteConfirmation(null);
+    }
+  };
+
+  // Show error from hook
+  useEffect(() => {
+    if (error) {
+      setMessage({ type: "error", text: error });
+    }
+  }, [error]);
 
   // Update unit size based on unit type
   useEffect(() => {
@@ -403,19 +468,10 @@ export default function InventoryPage() {
       return;
     }
 
-    setSubmitLoading(true);
     setMessage(null);
 
     try {
-      const response = await fetch("/api/inventory", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(formData),
-      });
-
-      const result = await response.json();
+      const result = await addInventoryTransaction(formData);
 
       if (result.success) {
         setMessage({
@@ -427,6 +483,7 @@ export default function InventoryPage() {
         setFormData({
           party_id: 0,
           paper_type_id: 0,
+          gsm: null,
           transaction_type: "in",
           quantity: 0,
           unit_type: "packets",
@@ -434,21 +491,9 @@ export default function InventoryPage() {
           description: "",
         });
 
-        // Refresh data
-        const [inventoryRes, transactionsRes] = await Promise.all([
-          fetch("/api/inventory"),
-          fetch("/api/inventory/transactions"),
-        ]);
-
-        const [inventoryData, transactionsData] = await Promise.all([
-          inventoryRes.json(),
-          transactionsRes.json(),
-        ]);
-
-        setInventoryItems(inventoryData.success ? inventoryData.data : []);
-        setRecentTransactions(
-          transactionsData.success ? transactionsData.data : []
-        );
+        // Reset selected party and current stock
+        setSelectedParty(null);
+        setCurrentStock(null);
       } else {
         setMessage({
           type: "error",
@@ -461,8 +506,6 @@ export default function InventoryPage() {
         type: "error",
         text: "An error occurred while updating inventory",
       });
-    } finally {
-      setSubmitLoading(false);
     }
   };
 
@@ -1007,6 +1050,11 @@ export default function InventoryPage() {
                             {currentStock.current_quantity.toLocaleString()}
                           </div>
                           <div className="text-gray-600">sheets available</div>
+                          <div className="text-sm text-gray-500 mt-1">
+                            {currentStock.parties?.name} -{" "}
+                            {currentStock.paper_type_name}
+                            {currentStock.gsm && ` (${currentStock.gsm} GSM)`}
+                          </div>
                         </div>
 
                         <div className="space-y-2">
@@ -1036,7 +1084,25 @@ export default function InventoryPage() {
                     ) : (
                       <div className="text-center text-gray-500 py-8">
                         <Package className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                        <p>Select party and paper type to view current stock</p>
+                        <p>
+                          Select party, paper type, and GSM to view current
+                          stock
+                        </p>
+                        {formData.party_id > 0 &&
+                          formData.paper_type_id > 0 &&
+                          !formData.gsm && (
+                            <p className="text-sm text-orange-600 mt-2">
+                              GSM selection required
+                            </p>
+                          )}
+                        {formData.party_id > 0 &&
+                          formData.paper_type_id > 0 &&
+                          formData.gsm && (
+                            <p className="text-sm text-blue-600 mt-2">
+                              No existing stock found for this combination. Add
+                              some stock to see it here.
+                            </p>
+                          )}
                       </div>
                     )}
                   </CardContent>
@@ -1267,6 +1333,7 @@ export default function InventoryPage() {
                         </TableHead>
                         <TableHead className="text-right">Available</TableHead>
                         <TableHead className="text-center">Status</TableHead>
+                        <TableHead className="text-center">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -1281,9 +1348,9 @@ export default function InventoryPage() {
                             <div className="font-medium">
                               {item.paper_type_name}
                             </div>
-                            {item.paper_types?.gsm && (
+                            {item.gsm && (
                               <div className="text-sm text-gray-500">
-                                {item.paper_types.gsm} GSM
+                                {item.gsm} GSM
                               </div>
                             )}
                           </TableCell>
@@ -1307,6 +1374,34 @@ export default function InventoryPage() {
                                 Good Stock
                               </Badge>
                             )}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8 w-8 p-0"
+                                >
+                                  <MoreHorizontal className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem
+                                  onClick={() =>
+                                    setDeleteConfirmation({
+                                      type: "item",
+                                      id: item.id,
+                                      name: `${item.parties?.name || `Party ${item.party_id}`} - ${item.paper_type_name}${item.gsm ? ` (${item.gsm} GSM)` : ""}`,
+                                    })
+                                  }
+                                  className="text-red-600 focus:text-red-600"
+                                >
+                                  <Trash2 className="h-4 w-4 mr-2" />
+                                  Delete Item
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           </TableCell>
                         </TableRow>
                       ))}
@@ -1490,6 +1585,7 @@ export default function InventoryPage() {
                         <TableHead className="text-right">
                           Balance After
                         </TableHead>
+                        <TableHead className="text-center">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -1516,6 +1612,11 @@ export default function InventoryPage() {
                           <TableCell>
                             <div className="font-medium">
                               {transaction.inventory_items?.paper_type_name}
+                              {transaction.gsm && (
+                                <div className="text-sm text-gray-500">
+                                  {transaction.gsm} GSM
+                                </div>
+                              )}
                             </div>
                           </TableCell>
                           <TableCell className="text-center">
@@ -1557,6 +1658,34 @@ export default function InventoryPage() {
                           </TableCell>
                           <TableCell className="text-right font-mono font-semibold">
                             {transaction.balance_after.toLocaleString()}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8 w-8 p-0"
+                                >
+                                  <MoreHorizontal className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem
+                                  onClick={() =>
+                                    setDeleteConfirmation({
+                                      type: "transaction",
+                                      id: transaction.id,
+                                      name: `${transaction.parties?.name || `Party ${transaction.party_id}`} - ${transaction.transaction_type.toUpperCase()} ${transaction.quantity} ${transaction.unit_type}`,
+                                    })
+                                  }
+                                  className="text-red-600 focus:text-red-600"
+                                >
+                                  <Trash2 className="h-4 w-4 mr-2" />
+                                  Delete Transaction
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           </TableCell>
                         </TableRow>
                       ))}
@@ -1723,6 +1852,43 @@ export default function InventoryPage() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        {/* Delete Confirmation Dialog */}
+        <AlertDialog
+          open={deleteConfirmation !== null}
+          onOpenChange={(open) => {
+            if (!open) setDeleteConfirmation(null);
+          }}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                Delete{" "}
+                {deleteConfirmation?.type === "item"
+                  ? "Inventory Item"
+                  : "Transaction"}
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                Are you sure you want to delete this {deleteConfirmation?.type}?
+                <br />
+                <strong>{deleteConfirmation?.name}</strong>
+                <br />
+                {deleteConfirmation?.type === "item"
+                  ? "This will permanently delete the inventory item and all its transaction history. This action cannot be undone."
+                  : "This will permanently delete this transaction from the history. This action cannot be undone."}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleDeleteConfirm}
+                className="bg-red-600 hover:bg-red-700"
+              >
+                Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </div>
   );

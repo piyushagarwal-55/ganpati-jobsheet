@@ -116,6 +116,12 @@ export default function JobSheetsTable({
   jobSheets,
   notes,
   searchTerm,
+  setSearchTerm,
+  advancedFilters,
+  setAdvancedFilters,
+  showAdvancedFilters,
+  setShowAdvancedFilters,
+  clearAllFilters,
   dateFilter,
   setDateFilter,
   partyFilter,
@@ -128,7 +134,6 @@ export default function JobSheetsTable({
   setSelectedJobSheet,
   onRefresh,
   softDeleteJobSheet,
-  
 }: JobSheetsTableProps) {
   const [isLoading, setIsLoading] = useState<{ [key: number]: boolean }>({});
   const [quickEditId, setQuickEditId] = useState<number | null>(null);
@@ -141,81 +146,106 @@ export default function JobSheetsTable({
   // Soft delete dialog state
   const [softDeleteId, setSoftDeleteId] = useState<number | null>(null);
   const [deletionReason, setDeletionReason] = useState("");
-const filteredJobSheets = jobSheets.filter((sheet) => {
-  // Basic search filter
-  if (searchTerm) {
-    const searchLower = searchTerm.toLowerCase();
-    const matchesSearch = (
-      sheet.party_name?.toLowerCase().includes(searchLower) ||
-      sheet.description?.toLowerCase().includes(searchLower) ||
-      sheet.job_type?.toLowerCase().includes(searchLower)
-    );
-    if (!matchesSearch) return false;
-  }
+  const filteredJobSheets = jobSheets.filter((sheet) => {
+    // Basic search filter
+    const matchesSearch =
+      !searchTerm ||
+      (() => {
+        const searchLower = searchTerm.toLowerCase();
+        return (
+          sheet.party_name?.toLowerCase().includes(searchLower) ||
+          sheet.description?.toLowerCase().includes(searchLower) ||
+          sheet.job_type?.toLowerCase().includes(searchLower)
+        );
+      })();
 
-  // Date filter
-  const matchesDate = (() => {
-    if (dateFilter === "all") return true;
-    
-    const jobDate = new Date(sheet.job_date);
-    const today = new Date();
-    
-    switch (dateFilter) {
-      case "today":
-        return jobDate.toDateString() === today.toDateString();
-      case "week":
-        const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
-        return jobDate >= weekAgo;
-      case "month":
-        return jobDate.getMonth() === today.getMonth() && jobDate.getFullYear() === today.getFullYear();
-      case "quarter":
-        const currentQuarter = Math.floor(today.getMonth() / 3);
-        const jobQuarter = Math.floor(jobDate.getMonth() / 3);
-        return jobQuarter === currentQuarter && jobDate.getFullYear() === today.getFullYear();
-      default:
-        return true;
-    }
-  })();
+    // Date filter
+    const matchesDate = (() => {
+      if (dateFilter === "all") return true;
+      if (!sheet.job_date) return false;
 
-  // Party filter
-  const matchesParty = (() => {
-    if (partyFilter === "all") return true;
-    if (partyFilter === "no-party") return !sheet.party_name;
-    return sheet.party_name === partyFilter;
-  })();
+      const jobDate = new Date(sheet.job_date);
+      const today = new Date();
 
-  // Advanced filters
-  const { sizeMin, sizeMax, gsmMin, gsmMax, jobType, impressionsMin, impressionsMax, 
-          totalCostMin, totalCostMax, balanceMin, balanceMax, showOnlyWithBalance } = advancedFilters;
+      switch (dateFilter) {
+        case "today":
+          return jobDate.toDateString() === today.toDateString();
+        case "week":
+          const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+          return jobDate >= weekAgo;
+        case "month":
+          return (
+            jobDate.getMonth() === today.getMonth() &&
+            jobDate.getFullYear() === today.getFullYear()
+          );
+        case "quarter":
+          const currentQuarter = Math.floor(today.getMonth() / 3);
+          const jobQuarter = Math.floor(jobDate.getMonth() / 3);
+          return (
+            jobQuarter === currentQuarter &&
+            jobDate.getFullYear() === today.getFullYear()
+          );
+        default:
+          return true;
+      }
+    })();
 
-  // Size filter
-  if (sizeMin && sheet.size && parseFloat(sheet.size) < parseFloat(sizeMin)) return false;
-  if (sizeMax && sheet.size && parseFloat(sheet.size) > parseFloat(sizeMax)) return false;
+    // Party filter
+    const matchesParty = (() => {
+      if (partyFilter === "all") return true;
+      if (partyFilter === "no-party") return !sheet.party_name;
+      return sheet.party_name === partyFilter;
+    })();
 
-  // GSM filter
-  if (gsmMin && sheet.gsm && parseFloat(sheet.gsm) < parseFloat(gsmMin)) return false;
-  if (gsmMax && sheet.gsm && parseFloat(sheet.gsm) > parseFloat(gsmMax)) return false;
+    // Advanced filters
+    const {
+      sizeMin,
+      sizeMax,
+      gsmMin,
+      gsmMax,
+      jobType,
+      impressionsMin,
+      impressionsMax,
+      totalCostMin,
+      totalCostMax,
+      balanceMin,
+      balanceMax,
+      showOnlyWithBalance,
+    } = advancedFilters;
 
-  // Job type filter
-  if (jobType !== "all" && sheet.job_type !== jobType) return false;
+    // Size filter
+    if (sizeMin && sheet.size && parseFloat(sheet.size) < parseFloat(sizeMin))
+      return false;
+    if (sizeMax && sheet.size && parseFloat(sheet.size) > parseFloat(sizeMax))
+      return false;
 
-  // Impressions filter
-  if (impressionsMin && sheet.imp && sheet.imp < parseFloat(impressionsMin)) return false;
-  if (impressionsMax && sheet.imp && sheet.imp > parseFloat(impressionsMax)) return false;
+    // GSM filter
+    if (gsmMin && sheet.gsm && sheet.gsm < parseFloat(gsmMin)) return false;
+    if (gsmMax && sheet.gsm && sheet.gsm > parseFloat(gsmMax)) return false;
 
-  // Total cost filter
-  const totalCost = (sheet.printing || 0) + (sheet.uv || 0) + (sheet.baking || 0);
-  if (totalCostMin && totalCost < parseFloat(totalCostMin)) return false;
-  if (totalCostMax && totalCost > parseFloat(totalCostMax)) return false;
+    // Job type filter
+    if (jobType !== "all" && sheet.job_type !== jobType) return false;
 
-  // Balance filter
-  const balance = totalCost - (sheet.advance || 0);
-  if (balanceMin && balance < parseFloat(balanceMin)) return false;
-  if (balanceMax && balance > parseFloat(balanceMax)) return false;
-  if (showOnlyWithBalance && balance <= 0) return false;
+    // Impressions filter
+    if (impressionsMin && sheet.imp && sheet.imp < parseFloat(impressionsMin))
+      return false;
+    if (impressionsMax && sheet.imp && sheet.imp > parseFloat(impressionsMax))
+      return false;
 
-  return matchesSearch && matchesDate && matchesParty;
-});
+    // Total cost filter
+    const totalCost =
+      (sheet.printing || 0) + (sheet.uv || 0) + (sheet.baking || 0);
+    if (totalCostMin && totalCost < parseFloat(totalCostMin)) return false;
+    if (totalCostMax && totalCost > parseFloat(totalCostMax)) return false;
+
+    // Balance filter - using total cost as balance since advance doesn't exist
+    const balance = totalCost;
+    if (balanceMin && balance < parseFloat(balanceMin)) return false;
+    if (balanceMax && balance > parseFloat(balanceMax)) return false;
+    if (showOnlyWithBalance && balance <= 0) return false;
+
+    return matchesSearch && matchesDate && matchesParty;
+  });
 
   // For now, treat all job sheets as active until soft delete is properly implemented
   const activeJobSheets = filteredJobSheets;
@@ -419,182 +449,261 @@ const filteredJobSheets = jobSheets.filter((sheet) => {
 
   return (
     <div className="mt-8">
-    {/* Search Bar with Advanced Filters */}
-<div className="mb-6 space-y-4">
-  {/* Basic Search */}
-  <div className="flex items-center gap-4">
-    <div className="relative flex-1">
-      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-      <Input
-        placeholder="Search job sheets by party name, description, or job type..."
-        value={searchTerm}
-        onChange={(e) => setSearchTerm(e.target.value)}
-        className="pl-10 h-12 text-lg border-gray-200 focus:border-blue-500"
-      />
-    </div>
-    <Button
-      onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
-      variant={showAdvancedFilters ? "default" : "outline"}
-      className="h-12 px-6"
-    >
-      <Target className="w-4 h-4 mr-2" />
-      Advanced Filters
-    </Button>
-    {(searchTerm || Object.values(advancedFilters).some(v => v && v !== "all" && v !== false)) && (
-      <Button
-        onClick={clearAllFilters}
-        variant="outline"
-        className="h-12 px-6 text-red-600 border-red-300 hover:bg-red-50"
-      >
-        Clear All
-      </Button>
-    )}
-  </div>
-
-  {/* Advanced Filters Panel */}
-  {showAdvancedFilters && (
-    <div className="border border-gray-200 rounded-lg p-4 bg-gray-50">
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-        {/* Size Range */}
-        <div className="space-y-2">
-          <label className="text-sm font-medium text-gray-700">Size Range</label>
-          <div className="flex gap-2">
+      {/* Search Bar with Advanced Filters */}
+      <div className="mb-6 space-y-4">
+        {/* Basic Search */}
+        <div className="flex items-center gap-4">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
             <Input
-              placeholder="Min"
-              value={advancedFilters.sizeMin}
-              onChange={(e) => setAdvancedFilters({...advancedFilters, sizeMin: e.target.value})}
-              className="text-sm"
-            />
-            <Input
-              placeholder="Max"
-              value={advancedFilters.sizeMax}
-              onChange={(e) => setAdvancedFilters({...advancedFilters, sizeMax: e.target.value})}
-              className="text-sm"
+              placeholder="Search job sheets by party name, description, or job type..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10 h-12 text-lg border-gray-200 focus:border-blue-500"
             />
           </div>
-        </div>
-
-        {/* GSM Range */}
-        <div className="space-y-2">
-          <label className="text-sm font-medium text-gray-700">GSM Range</label>
-          <div className="flex gap-2">
-            <Input
-              placeholder="Min"
-              value={advancedFilters.gsmMin}
-              onChange={(e) => setAdvancedFilters({...advancedFilters, gsmMin: e.target.value})}
-              className="text-sm"
-            />
-            <Input
-              placeholder="Max"
-              value={advancedFilters.gsmMax}
-              onChange={(e) => setAdvancedFilters({...advancedFilters, gsmMax: e.target.value})}
-              className="text-sm"
-            />
-          </div>
-        </div>
-
-        {/* Job Type */}
-        <div className="space-y-2">
-          <label className="text-sm font-medium text-gray-700">Job Type</label>
-          <select
-            value={advancedFilters.jobType}
-            onChange={(e) => setAdvancedFilters({...advancedFilters, jobType: e.target.value})}
-            className="w-full p-2 border border-gray-300 rounded-md text-sm focus:border-blue-500 focus:outline-none"
+          <Button
+            onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+            variant={showAdvancedFilters ? "default" : "outline"}
+            className="h-12 px-6"
           >
-            <option value="all">All Types</option>
-            <option value="printing">Printing</option>
-            <option value="uv">UV</option>
-            <option value="baking">Baking</option>
-            <option value="combo">Combo</option>
-          </select>
+            <Target className="w-4 h-4 mr-2" />
+            Advanced Filters
+          </Button>
+          {(searchTerm ||
+            Object.entries(advancedFilters).some(([key, value]) => {
+              if (key === "showOnlyWithBalance") return value === true;
+              return value && value !== "all" && value !== "";
+            })) && (
+            <Button
+              onClick={clearAllFilters}
+              variant="outline"
+              className="h-12 px-6 text-red-600 border-red-300 hover:bg-red-50"
+            >
+              Clear All
+            </Button>
+          )}
         </div>
 
-        {/* Impressions Range */}
-        <div className="space-y-2">
-          <label className="text-sm font-medium text-gray-700">Impressions Range</label>
-          <div className="flex gap-2">
-            <Input
-              placeholder="Min"
-              value={advancedFilters.impressionsMin}
-              onChange={(e) => setAdvancedFilters({...advancedFilters, impressionsMin: e.target.value})}
-              className="text-sm"
-            />
-            <Input
-              placeholder="Max"
-              value={advancedFilters.impressionsMax}
-              onChange={(e) => setAdvancedFilters({...advancedFilters, impressionsMax: e.target.value})}
-              className="text-sm"
-            />
+        {/* Advanced Filters Panel */}
+        {showAdvancedFilters && (
+          <div className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              {/* Size Range */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-gray-700">
+                  Size Range
+                </label>
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Min"
+                    value={advancedFilters.sizeMin}
+                    onChange={(e) =>
+                      setAdvancedFilters({
+                        ...advancedFilters,
+                        sizeMin: e.target.value,
+                      })
+                    }
+                    className="text-sm"
+                  />
+                  <Input
+                    placeholder="Max"
+                    value={advancedFilters.sizeMax}
+                    onChange={(e) =>
+                      setAdvancedFilters({
+                        ...advancedFilters,
+                        sizeMax: e.target.value,
+                      })
+                    }
+                    className="text-sm"
+                  />
+                </div>
+              </div>
+
+              {/* GSM Range */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-gray-700">
+                  GSM Range
+                </label>
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Min"
+                    value={advancedFilters.gsmMin}
+                    onChange={(e) =>
+                      setAdvancedFilters({
+                        ...advancedFilters,
+                        gsmMin: e.target.value,
+                      })
+                    }
+                    className="text-sm"
+                  />
+                  <Input
+                    placeholder="Max"
+                    value={advancedFilters.gsmMax}
+                    onChange={(e) =>
+                      setAdvancedFilters({
+                        ...advancedFilters,
+                        gsmMax: e.target.value,
+                      })
+                    }
+                    className="text-sm"
+                  />
+                </div>
+              </div>
+
+              {/* Job Type */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-gray-700">
+                  Job Type
+                </label>
+                <select
+                  value={advancedFilters.jobType}
+                  onChange={(e) =>
+                    setAdvancedFilters({
+                      ...advancedFilters,
+                      jobType: e.target.value,
+                    })
+                  }
+                  className="w-full p-2 border border-gray-300 rounded-md text-sm focus:border-blue-500 focus:outline-none"
+                >
+                  <option value="all">All Types</option>
+                  <option value="printing">Printing</option>
+                  <option value="uv">UV</option>
+                  <option value="baking">Baking</option>
+                  <option value="combo">Combo</option>
+                </select>
+              </div>
+
+              {/* Impressions Range */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-gray-700">
+                  Impressions Range
+                </label>
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Min"
+                    value={advancedFilters.impressionsMin}
+                    onChange={(e) =>
+                      setAdvancedFilters({
+                        ...advancedFilters,
+                        impressionsMin: e.target.value,
+                      })
+                    }
+                    className="text-sm"
+                  />
+                  <Input
+                    placeholder="Max"
+                    value={advancedFilters.impressionsMax}
+                    onChange={(e) =>
+                      setAdvancedFilters({
+                        ...advancedFilters,
+                        impressionsMax: e.target.value,
+                      })
+                    }
+                    className="text-sm"
+                  />
+                </div>
+              </div>
+
+              {/* Total Cost Range */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-gray-700">
+                  Total Cost Range
+                </label>
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Min ₹"
+                    value={advancedFilters.totalCostMin}
+                    onChange={(e) =>
+                      setAdvancedFilters({
+                        ...advancedFilters,
+                        totalCostMin: e.target.value,
+                      })
+                    }
+                    className="text-sm"
+                  />
+                  <Input
+                    placeholder="Max ₹"
+                    value={advancedFilters.totalCostMax}
+                    onChange={(e) =>
+                      setAdvancedFilters({
+                        ...advancedFilters,
+                        totalCostMax: e.target.value,
+                      })
+                    }
+                    className="text-sm"
+                  />
+                </div>
+              </div>
+
+              {/* Balance Range */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-gray-700">
+                  Balance Range
+                </label>
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Min ₹"
+                    value={advancedFilters.balanceMin}
+                    onChange={(e) =>
+                      setAdvancedFilters({
+                        ...advancedFilters,
+                        balanceMin: e.target.value,
+                      })
+                    }
+                    className="text-sm"
+                  />
+                  <Input
+                    placeholder="Max ₹"
+                    value={advancedFilters.balanceMax}
+                    onChange={(e) =>
+                      setAdvancedFilters({
+                        ...advancedFilters,
+                        balanceMax: e.target.value,
+                      })
+                    }
+                    className="text-sm"
+                  />
+                </div>
+              </div>
+
+              {/* Balance Options */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-gray-700">
+                  Balance Options
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={advancedFilters.showOnlyWithBalance}
+                    onChange={(e) =>
+                      setAdvancedFilters({
+                        ...advancedFilters,
+                        showOnlyWithBalance: e.target.checked,
+                      })
+                    }
+                    className="rounded border-gray-300"
+                  />
+                  Show only with pending balance
+                </label>
+              </div>
+            </div>
+
+            {/* Filter Results Summary */}
+            <div className="mt-4 p-3 bg-white rounded-lg border">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-600">
+                  Showing {filteredJobSheets.length} of {jobSheets.length} job
+                  sheets
+                </span>
+                <Badge variant="outline" className="text-blue-600">
+                  {filteredJobSheets.length} Results
+                </Badge>
+              </div>
+            </div>
           </div>
-        </div>
-
-        {/* Total Cost Range */}
-        <div className="space-y-2">
-          <label className="text-sm font-medium text-gray-700">Total Cost Range</label>
-          <div className="flex gap-2">
-            <Input
-              placeholder="Min ₹"
-              value={advancedFilters.totalCostMin}
-              onChange={(e) => setAdvancedFilters({...advancedFilters, totalCostMin: e.target.value})}
-              className="text-sm"
-            />
-            <Input
-              placeholder="Max ₹"
-              value={advancedFilters.totalCostMax}
-              onChange={(e) => setAdvancedFilters({...advancedFilters, totalCostMax: e.target.value})}
-              className="text-sm"
-            />
-          </div>
-        </div>
-
-        {/* Balance Range */}
-        <div className="space-y-2">
-          <label className="text-sm font-medium text-gray-700">Balance Range</label>
-          <div className="flex gap-2">
-            <Input
-              placeholder="Min ₹"
-              value={advancedFilters.balanceMin}
-              onChange={(e) => setAdvancedFilters({...advancedFilters, balanceMin: e.target.value})}
-              className="text-sm"
-            />
-            <Input
-              placeholder="Max ₹"
-              value={advancedFilters.balanceMax}
-              onChange={(e) => setAdvancedFilters({...advancedFilters, balanceMax: e.target.value})}
-              className="text-sm"
-            />
-          </div>
-        </div>
-
-        {/* Balance Options */}
-        <div className="space-y-2">
-          <label className="text-sm font-medium text-gray-700">Balance Options</label>
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={advancedFilters.showOnlyWithBalance}
-              onChange={(e) => setAdvancedFilters({...advancedFilters, showOnlyWithBalance: e.target.checked})}
-              className="rounded border-gray-300"
-            />
-            Show only with pending balance
-          </label>
-        </div>
+        )}
       </div>
-
-      {/* Filter Results Summary */}
-      <div className="mt-4 p-3 bg-white rounded-lg border">
-        <div className="flex items-center justify-between">
-          <span className="text-sm text-gray-600">
-            Showing {filteredJobSheets.length} of {jobSheets.length} job sheets
-          </span>
-          <Badge variant="outline" className="text-blue-600">
-            {filteredJobSheets.length} Results
-          </Badge>
-        </div>
-      </div>
-    </div>
-  )}
-</div>
       <Card className="card-shadow">
         <CardHeader>
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -647,30 +756,32 @@ const filteredJobSheets = jobSheets.filter((sheet) => {
               </Select>
 
               {/* Party Filter */}
-<Select value={partyFilter} onValueChange={setPartyFilter}>
-  <SelectTrigger className="w-full sm:w-[160px]">
-    <Users className="w-4 h-4 mr-2" />
-    <SelectValue placeholder="Filter by party" />
-  </SelectTrigger>
-  <SelectContent>
-    <SelectItem value="all">All Parties</SelectItem>
-    <SelectItem value="no-party">No Party Assigned</SelectItem>
-    {(() => {
-      // Get unique parties from filtered job sheets
-      const filteredParties = Array.from(new Set(
-        filteredJobSheets
-          .filter(sheet => sheet.party_name)
-          .map(sheet => sheet.party_name)
-      ));
-      
-      return filteredParties.map((partyName) => (
-        <SelectItem key={partyName} value={partyName}>
-          {partyName}
-        </SelectItem>
-      ));
-    })()}
-  </SelectContent>
-</Select>
+              <Select value={partyFilter} onValueChange={setPartyFilter}>
+                <SelectTrigger className="w-full sm:w-[160px]">
+                  <Users className="w-4 h-4 mr-2" />
+                  <SelectValue placeholder="Filter by party" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Parties</SelectItem>
+                  <SelectItem value="no-party">No Party Assigned</SelectItem>
+                  {(() => {
+                    // Get unique parties from filtered job sheets
+                    const filteredParties = Array.from(
+                      new Set(
+                        filteredJobSheets
+                          .filter((sheet) => sheet.party_name)
+                          .map((sheet) => sheet.party_name!)
+                      )
+                    );
+
+                    return filteredParties.map((partyName) => (
+                      <SelectItem key={partyName} value={partyName}>
+                        {partyName}
+                      </SelectItem>
+                    ));
+                  })()}
+                </SelectContent>
+              </Select>
 
               {/* New Job Sheet Button */}
               <Button

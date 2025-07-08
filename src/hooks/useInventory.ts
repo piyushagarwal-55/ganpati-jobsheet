@@ -23,6 +23,12 @@ interface UseInventoryReturn {
   addInventoryTransaction: (
     data: InventoryFormData
   ) => Promise<{ success: boolean; error?: string }>;
+  deleteInventoryItem: (
+    itemId: number
+  ) => Promise<{ success: boolean; error?: string }>;
+  deleteTransaction: (
+    transactionId: number
+  ) => Promise<{ success: boolean; error?: string }>;
   refreshData: () => Promise<void>;
   getStockByPartyAndPaper: (
     partyId: number,
@@ -127,6 +133,73 @@ export function useInventory(): UseInventoryReturn {
     [fetchInventoryData]
   );
 
+  // Delete inventory item
+  const deleteInventoryItem = useCallback(
+    async (itemId: number) => {
+      setSubmitLoading(true);
+      setError(null);
+
+      try {
+        const response = await fetch(`/api/inventory?id=${itemId}&type=item`, {
+          method: "DELETE",
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+          // Refresh data after successful deletion
+          await fetchInventoryData();
+          return { success: true };
+        } else {
+          setError(result.error || "Failed to delete inventory item");
+          return { success: false, error: result.error };
+        }
+      } catch (err) {
+        const errorMessage = "An error occurred while deleting inventory item";
+        setError(errorMessage);
+        return { success: false, error: errorMessage };
+      } finally {
+        setSubmitLoading(false);
+      }
+    },
+    [fetchInventoryData]
+  );
+
+  // Delete transaction
+  const deleteTransaction = useCallback(
+    async (transactionId: number) => {
+      setSubmitLoading(true);
+      setError(null);
+
+      try {
+        const response = await fetch(
+          `/api/inventory?id=${transactionId}&type=transaction`,
+          {
+            method: "DELETE",
+          }
+        );
+
+        const result = await response.json();
+
+        if (result.success) {
+          // Refresh data after successful deletion
+          await fetchInventoryData();
+          return { success: true };
+        } else {
+          setError(result.error || "Failed to delete transaction");
+          return { success: false, error: result.error };
+        }
+      } catch (err) {
+        const errorMessage = "An error occurred while deleting transaction";
+        setError(errorMessage);
+        return { success: false, error: errorMessage };
+      } finally {
+        setSubmitLoading(false);
+      }
+    },
+    [fetchInventoryData]
+  );
+
   // Refresh data
   const refreshData = useCallback(async () => {
     await fetchInventoryData();
@@ -184,6 +257,8 @@ export function useInventory(): UseInventoryReturn {
 
     // Operations
     addInventoryTransaction,
+    deleteInventoryItem,
+    deleteTransaction,
     refreshData,
     getStockByPartyAndPaper,
 
