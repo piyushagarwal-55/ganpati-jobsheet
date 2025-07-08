@@ -701,8 +701,8 @@ export default function JobSheetAdminDashboard() {
             <Card className="shadow-lg">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <FileText className="w-5 h-5 text-blue-600" />
-                  Job Sheets Management
+                  {/* <FileText className="w-5 h-5 text-blue-600" /> */}
+                  {/* Job Sheets Management */}
                 </CardTitle>
               </CardHeader>
               <CardContent>
