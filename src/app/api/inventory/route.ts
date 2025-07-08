@@ -61,6 +61,7 @@ export async function POST(request: Request) {
     const {
       party_id,
       paper_type_id,
+      gsm,
       transaction_type = "in",
       quantity,
       unit_type,
@@ -81,12 +82,13 @@ export async function POST(request: Request) {
       .eq("id", paper_type_id)
       .single();
 
-    // Check if inventory item exists, if not create it
+    // Check if inventory item exists, if not create it (including GSM)
     let { data: inventoryItem } = await supabase
       .from("inventory_items")
       .select("id")
       .eq("party_id", party_id)
       .eq("paper_type_id", paper_type_id)
+      .eq("gsm", gsm)
       .single();
 
     if (!inventoryItem) {
@@ -96,6 +98,7 @@ export async function POST(request: Request) {
         .insert({
           party_id,
           paper_type_id,
+          gsm,
           paper_type_name: paperType?.name || "Unknown",
           current_quantity: 0,
         })
@@ -132,6 +135,7 @@ export async function POST(request: Request) {
         inventory_item_id: inventoryItem.id,
         party_id,
         paper_type_id,
+        gsm,
         transaction_type,
         quantity: Math.abs(quantity),
         unit_type,

@@ -61,9 +61,16 @@ import {
 } from "@/types/inventory";
 import Loading from "@/components/ui/loading";
 
+// GSM options from job sheet form
+const paperGSMs = [
+  70, 80, 90, 100, 110, 115, 120, 125, 130, 150, 170, 200, 210, 220, 230, 250,
+  260, 270, 280, 300, 330,
+];
+
 interface Party {
   id: number;
   name: string;
+  balance: number;
   phone?: string;
   email?: string;
 }
@@ -78,6 +85,7 @@ export default function InventoryPage() {
   const [formData, setFormData] = useState<InventoryFormData>({
     party_id: 0,
     paper_type_id: 0,
+    gsm: null,
     transaction_type: "in",
     quantity: 0,
     unit_type: "packets",
@@ -121,6 +129,16 @@ export default function InventoryPage() {
   // Dialog states
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
+
+  // Party management states (from job sheet form)
+  const [selectedParty, setSelectedParty] = useState<Party | null>(null);
+  const [showNewPartyDialog, setShowNewPartyDialog] = useState(false);
+  const [newPartyName, setNewPartyName] = useState("");
+  const [newPartyBalance, setNewPartyBalance] = useState("");
+
+  // Paper type management states
+  const [showNewPaperTypeDialog, setShowNewPaperTypeDialog] = useState(false);
+  const [newPaperType, setNewPaperType] = useState({ name: "", gsm: "" });
 
   // Fetch initial data
   useEffect(() => {
@@ -169,19 +187,20 @@ export default function InventoryPage() {
     fetchData();
   }, []);
 
-  // Update current stock when party and paper type change
+  // Update current stock when party, paper type, and GSM change
   useEffect(() => {
     if (formData.party_id && formData.paper_type_id) {
       const stock = inventoryItems.find(
         (item) =>
           item.party_id === formData.party_id &&
-          item.paper_type_id === formData.paper_type_id
+          item.paper_type_id === formData.paper_type_id &&
+          item.gsm === formData.gsm
       );
       setCurrentStock(stock || null);
     } else {
       setCurrentStock(null);
     }
-  }, [formData.party_id, formData.paper_type_id, inventoryItems]);
+  }, [formData.party_id, formData.paper_type_id, formData.gsm, inventoryItems]);
 
   // Update unit size based on unit type
   useEffect(() => {
@@ -196,6 +215,88 @@ export default function InventoryPage() {
       }
     }
   }, [formData.unit_type, customPacketSize]);
+
+  // Party management functions (from job sheet form)
+  const handleAddNewParty = async () => {
+    if (!newPartyName.trim()) return;
+
+    try {
+      const response = await fetch("/api/parties", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: newPartyName.trim(),
+          balance: parseFloat(newPartyBalance) || 0,
+        }),
+      });
+
+      if (response.ok) {
+        const newParty = await response.json();
+        // Refresh parties list
+        const updatedPartiesRes = await fetch("/api/parties");
+        const updatedPartiesData = await updatedPartiesRes.json();
+        setParties(Array.isArray(updatedPartiesData) ? updatedPartiesData : []);
+
+        // Select the newly created party
+        const createdParty = newParty.data || newParty;
+        setSelectedParty(createdParty);
+        setFormData((prev) => ({
+          ...prev,
+          party_id: createdParty.id,
+        }));
+
+        setShowNewPartyDialog(false);
+        setNewPartyName("");
+        setNewPartyBalance("");
+        setMessage({ type: "success", text: "Party added successfully!" });
+      }
+    } catch (error) {
+      console.error("Error adding party:", error);
+      setMessage({ type: "error", text: "Failed to add party" });
+    }
+  };
+
+  const handleAddNewPaperType = async () => {
+    if (!newPaperType.name.trim()) return;
+
+    try {
+      const requestBody = {
+        name: newPaperType.name.trim(),
+        ...(newPaperType.gsm && { gsm: parseInt(newPaperType.gsm) }),
+      };
+
+      const response = await fetch("/api/paper-types", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(requestBody),
+      });
+
+      if (response.ok) {
+        const createdType = await response.json();
+        // Refresh paper types
+        const updatedTypesRes = await fetch("/api/paper-types");
+        const updatedTypesData = await updatedTypesRes.json();
+        const processedPaperTypes = updatedTypesData?.data || updatedTypesData;
+        setPaperTypes(
+          Array.isArray(processedPaperTypes) ? processedPaperTypes : []
+        );
+
+        // Select the newly created paper type
+        const createdPaperType = createdType.data || createdType;
+        setFormData((prev) => ({
+          ...prev,
+          paper_type_id: createdPaperType.id,
+        }));
+
+        setShowNewPaperTypeDialog(false);
+        setNewPaperType({ name: "", gsm: "" });
+        setMessage({ type: "success", text: "Paper type added successfully!" });
+      }
+    } catch (error) {
+      console.error("Error adding paper type:", error);
+      setMessage({ type: "error", text: "Failed to add paper type" });
+    }
+  };
 
   // Filtered inventory items
   const filteredInventoryItems = useMemo(() => {
@@ -499,17 +600,23 @@ export default function InventoryPage() {
                         <div className="space-y-2">
                           <Label htmlFor="party">Party Name *</Label>
                           <Select
-                            value={
-                              formData.party_id === 0
-                                ? ""
-                                : formData.party_id.toString()
-                            }
-                            onValueChange={(value) =>
-                              setFormData((prev) => ({
-                                ...prev,
-                                party_id: parseInt(value),
-                              }))
-                            }
+                            value={selectedParty?.id.toString() || ""}
+                            onValueChange={(value) => {
+                              if (value === "new") {
+                                setShowNewPartyDialog(true);
+                              } else {
+                                const party = parties.find(
+                                  (p) => p.id.toString() === value
+                                );
+                                if (party) {
+                                  setSelectedParty(party);
+                                  setFormData((prev) => ({
+                                    ...prev,
+                                    party_id: party.id,
+                                  }));
+                                }
+                              }
+                            }}
                           >
                             <SelectTrigger>
                               <SelectValue placeholder="Select a party" />
@@ -527,12 +634,44 @@ export default function InventoryPage() {
                                     key={party.id}
                                     value={party.id.toString()}
                                   >
-                                    {party.name}
+                                    <div className="flex items-center justify-between w-full">
+                                      <span>{party.name}</span>
+                                      <Badge
+                                        variant={
+                                          party.balance >= 0
+                                            ? "default"
+                                            : "destructive"
+                                        }
+                                        className="ml-2"
+                                      >
+                                        ₹{party.balance.toLocaleString()}
+                                      </Badge>
+                                    </div>
                                   </SelectItem>
                                 ))
                               )}
+                              <SelectItem value="new">
+                                <div className="flex items-center gap-2">
+                                  <Plus className="w-4 h-4" />
+                                  <span>Add New Party</span>
+                                </div>
+                              </SelectItem>
                             </SelectContent>
                           </Select>
+                          {selectedParty && (
+                            <div className="text-sm text-gray-600">
+                              Current Balance:{" "}
+                              <Badge
+                                variant={
+                                  selectedParty.balance >= 0
+                                    ? "default"
+                                    : "destructive"
+                                }
+                              >
+                                ₹{selectedParty.balance.toLocaleString()}
+                              </Badge>
+                            </div>
+                          )}
                         </div>
 
                         {/* Paper Type Selection */}
@@ -544,12 +683,16 @@ export default function InventoryPage() {
                                 ? ""
                                 : formData.paper_type_id.toString()
                             }
-                            onValueChange={(value) =>
-                              setFormData((prev) => ({
-                                ...prev,
-                                paper_type_id: parseInt(value),
-                              }))
-                            }
+                            onValueChange={(value) => {
+                              if (value === "new") {
+                                setShowNewPaperTypeDialog(true);
+                              } else {
+                                setFormData((prev) => ({
+                                  ...prev,
+                                  paper_type_id: parseInt(value),
+                                }));
+                              }
+                            }}
                           >
                             <SelectTrigger>
                               <SelectValue placeholder="Select paper type" />
@@ -567,11 +710,41 @@ export default function InventoryPage() {
                                     key={type.id}
                                     value={type.id.toString()}
                                   >
-                                    {type.name}{" "}
-                                    {type.gsm && `(${type.gsm} GSM)`}
+                                    {type.name}
                                   </SelectItem>
                                 ))
                               )}
+                              <SelectItem value="new">
+                                <div className="flex items-center gap-2 text-blue-600">
+                                  <Plus className="w-4 h-4" />
+                                  Add New Paper Type
+                                </div>
+                              </SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        {/* GSM Selection */}
+                        <div className="space-y-2">
+                          <Label htmlFor="gsm">GSM *</Label>
+                          <Select
+                            value={formData.gsm?.toString() || ""}
+                            onValueChange={(value) =>
+                              setFormData((prev) => ({
+                                ...prev,
+                                gsm: parseInt(value),
+                              }))
+                            }
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select GSM" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {paperGSMs.map((gsm) => (
+                                <SelectItem key={gsm} value={gsm.toString()}>
+                                  {gsm} GSM
+                                </SelectItem>
+                              ))}
                             </SelectContent>
                           </Select>
                         </div>
@@ -641,22 +814,73 @@ export default function InventoryPage() {
                                   key={option.value}
                                   value={option.value}
                                 >
-                                  <div className="flex flex-col">
-                                    <span>{option.label}</span>
-                                    <span className="text-xs text-gray-500">
-                                      {option.description}
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-sm">
+                                      {option.icon}
                                     </span>
+                                    <span>{option.label}</span>
                                   </div>
                                 </SelectItem>
                               ))}
                             </SelectContent>
                           </Select>
+
+                          {/* Unit Type Information */}
+                          {formData.unit_type && (
+                            <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 mt-2">
+                              {(() => {
+                                const selectedUnit = UNIT_OPTIONS.find(
+                                  (opt) => opt.value === formData.unit_type
+                                );
+                                if (!selectedUnit) return null;
+
+                                return (
+                                  <div className="space-y-2">
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-lg">
+                                        {selectedUnit.icon}
+                                      </span>
+                                      <div>
+                                        <span className="font-medium text-gray-900">
+                                          {selectedUnit.label}
+                                        </span>
+                                        <p className="text-sm text-gray-600">
+                                          {selectedUnit.description}
+                                        </p>
+                                      </div>
+                                    </div>
+                                    <div className="text-xs text-gray-500 bg-white p-2 rounded border">
+                                      <strong>How it works:</strong>{" "}
+                                      {selectedUnit.details}
+                                      {formData.unit_type === "packets" && (
+                                        <span className="block mt-1">
+                                          <strong>Current setting:</strong>{" "}
+                                          {customPacketSize} sheets per packet
+                                        </span>
+                                      )}
+                                      {formData.quantity > 0 && (
+                                        <div className="mt-2 pt-2 border-t border-gray-200">
+                                          <strong>Example:</strong>{" "}
+                                          {formData.quantity}{" "}
+                                          {formData.unit_type} ={" "}
+                                          {calculateTotalSheets().toLocaleString()}{" "}
+                                          total sheets
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })()}
+                            </div>
+                          )}
                         </div>
 
                         {/* Custom Packet Size (only for packets) */}
                         {formData.unit_type === "packets" && (
                           <div className="space-y-2">
-                            <Label htmlFor="packetSize">Packet Size *</Label>
+                            <Label htmlFor="packetSize">
+                              Packet Size * ({customPacketSize} sheets/packet)
+                            </Label>
                             <Select
                               value={customPacketSize.toString()}
                               onValueChange={(value) =>
@@ -672,7 +896,7 @@ export default function InventoryPage() {
                                     key={option.value}
                                     value={option.value.toString()}
                                   >
-                                    {option.label}
+                                    {option.value} sheets per packet
                                   </SelectItem>
                                 ))}
                               </SelectContent>
@@ -682,7 +906,7 @@ export default function InventoryPage() {
 
                         {/* Quantity */}
                         <div className="space-y-2">
-                          <Label htmlFor="quantity">Quantity *</Label>
+                          <Label htmlFor="quantity">Packet Quantity *</Label>
                           <Input
                             type="number"
                             value={formData.quantity}
@@ -718,22 +942,24 @@ export default function InventoryPage() {
                       {/* Calculation Summary */}
                       {formData.quantity > 0 && (
                         <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-                          <h3 className="font-semibold text-blue-900 mb-2">
+                          <h3 className="font-semibold text-blue-900 mb-3 flex items-center gap-2">
+                            <Calculator className="w-4 h-4" />
                             Transaction Summary
                           </h3>
                           <div className="grid grid-cols-2 gap-4 text-sm">
                             <div>
-                              <span className="text-gray-600">
-                                Total Sheets:
-                              </span>
+                              <span className="text-gray-600">Quantity:</span>
                               <span className="font-semibold ml-2">
-                                {calculateTotalSheets().toLocaleString()}
+                                {formData.quantity.toLocaleString()}{" "}
+                                {formData.unit_type}
                               </span>
                             </div>
                             <div>
-                              <span className="text-gray-600">Unit Type:</span>
-                              <span className="font-semibold ml-2 capitalize">
-                                {formData.unit_type}
+                              <span className="text-gray-600">
+                                Total Sheets:
+                              </span>
+                              <span className="font-semibold text-blue-700 ml-2">
+                                {calculateTotalSheets().toLocaleString()}
                               </span>
                             </div>
                           </div>
@@ -1396,6 +1622,104 @@ export default function InventoryPage() {
               >
                 Import Data
               </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* New Party Dialog */}
+        <Dialog open={showNewPartyDialog} onOpenChange={setShowNewPartyDialog}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Add New Party</DialogTitle>
+              <DialogDescription>
+                Create a new party account for inventory management.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="new-party-name">Party Name</Label>
+                <Input
+                  id="new-party-name"
+                  value={newPartyName}
+                  onChange={(e) => setNewPartyName(e.target.value)}
+                  placeholder="Enter party name"
+                />
+              </div>
+              <div>
+                <Label htmlFor="new-party-balance">Initial Balance</Label>
+                <Input
+                  id="new-party-balance"
+                  type="number"
+                  step="0.01"
+                  value={newPartyBalance}
+                  onChange={(e) => setNewPartyBalance(e.target.value)}
+                  placeholder="0.00"
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setShowNewPartyDialog(false)}
+              >
+                Cancel
+              </Button>
+              <Button onClick={handleAddNewParty}>Add Party</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* New Paper Type Dialog */}
+        <Dialog
+          open={showNewPaperTypeDialog}
+          onOpenChange={setShowNewPaperTypeDialog}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Add New Paper Type</DialogTitle>
+              <DialogDescription>
+                Create a new paper type for inventory management.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="new-paper-type-name">Paper Type Name</Label>
+                <Input
+                  id="new-paper-type-name"
+                  value={newPaperType.name}
+                  onChange={(e) =>
+                    setNewPaperType({ ...newPaperType, name: e.target.value })
+                  }
+                  placeholder="Enter paper type name (e.g., PREMIUM ART, MATTE FINISH)"
+                />
+              </div>
+              <div>
+                <Label htmlFor="new-paper-type-gsm">
+                  Default GSM (Optional)
+                </Label>
+                <Input
+                  id="new-paper-type-gsm"
+                  type="number"
+                  value={newPaperType.gsm}
+                  onChange={(e) =>
+                    setNewPaperType({ ...newPaperType, gsm: e.target.value })
+                  }
+                  placeholder="Enter default GSM (e.g., 250)"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  This is just a default reference. You can still specify
+                  different GSM values when using this paper type.
+                </p>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setShowNewPaperTypeDialog(false)}
+              >
+                Cancel
+              </Button>
+              <Button onClick={handleAddNewPaperType}>Add Paper Type</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
