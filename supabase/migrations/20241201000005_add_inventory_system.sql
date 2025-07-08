@@ -93,10 +93,34 @@ CREATE INDEX IF NOT EXISTS idx_inventory_transactions_created_at ON public.inven
 ALTER PUBLICATION supabase_realtime ADD TABLE inventory_items;
 ALTER PUBLICATION supabase_realtime ADD TABLE inventory_transactions;
 
--- Insert some sample data for testing
-INSERT INTO public.inventory_items (party_id, paper_type_id, paper_type_name, current_quantity, unit_cost) VALUES 
-(1, 1, 'ART PAPER', 5000, 0.50),
-(1, 2, 'MATTE PAPER', 3000, 0.60),
-(2, 1, 'ART PAPER', 2000, 0.50),
-(3, 3, 'GLOSSY PAPER', 1500, 0.80)
-ON CONFLICT (party_id, paper_type_id) DO NOTHING; 
+-- Insert some sample data for testing (only if parties exist)
+DO $$
+BEGIN
+    -- Only insert sample data if we have parties and paper types
+    IF EXISTS (SELECT 1 FROM public.parties LIMIT 1) AND 
+       EXISTS (SELECT 1 FROM public.paper_types LIMIT 1) THEN
+        
+        -- Get the first few party IDs that actually exist
+        INSERT INTO public.inventory_items (party_id, paper_type_id, paper_type_name, current_quantity, unit_cost)
+        SELECT 
+            p.id as party_id,
+            pt.id as paper_type_id,
+            pt.name as paper_type_name,
+            CASE 
+                WHEN pt.name = 'ART PAPER' THEN 5000
+                WHEN pt.name = 'MATTE PAPER' THEN 3000
+                WHEN pt.name = 'GLOSSY PAPER' THEN 1500
+                ELSE 1000
+            END as current_quantity,
+            CASE 
+                WHEN pt.name = 'ART PAPER' THEN 0.50
+                WHEN pt.name = 'MATTE PAPER' THEN 0.60
+                WHEN pt.name = 'GLOSSY PAPER' THEN 0.80
+                ELSE 0.40
+            END as unit_cost
+        FROM (SELECT id FROM public.parties ORDER BY id LIMIT 3) p
+        CROSS JOIN (SELECT id, name FROM public.paper_types ORDER BY id LIMIT 3) pt
+        ON CONFLICT (party_id, paper_type_id) DO NOTHING;
+        
+    END IF;
+END $$; 
