@@ -161,6 +161,7 @@ export default function JobSheetAdminDashboard() {
   );
   const [searchTerm, setSearchTerm] = useState("");
   const [dateFilter, setDateFilter] = useState<string>("all");
+  const [partyFilter, setPartyFilter] = useState<string>("all");
   const [activeTab, setActiveTab] = useState("overview");
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<
@@ -183,8 +184,8 @@ export default function JobSheetAdminDashboard() {
             transactionsResponse.json(),
           ]);
 
-          setParties(partiesData);
-          setTransactions(transactionsData);
+          setParties(Array.isArray(partiesData) ? partiesData : []);
+          setTransactions(Array.isArray(transactionsData) ? transactionsData : []);
           setLastUpdated(new Date());
         } else {
           setConnectionStatus("offline");
@@ -711,6 +712,9 @@ export default function JobSheetAdminDashboard() {
                   searchTerm=""
                   dateFilter={dateFilter}
                   setDateFilter={setDateFilter}
+                  partyFilter={partyFilter}
+                  setPartyFilter={setPartyFilter}
+                  parties={parties}
                   updateJobSheet={updateJobSheet}
                   deleteJobSheet={deleteJobSheet}
                   addNote={addNote}

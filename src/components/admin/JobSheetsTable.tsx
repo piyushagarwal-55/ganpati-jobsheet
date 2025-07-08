@@ -428,7 +428,7 @@ export default function JobSheetsTable({
                 <SelectContent>
                   <SelectItem value="all">All Parties</SelectItem>
                   <SelectItem value="no-party">No Party Assigned</SelectItem>
-                  {parties.map((party) => (
+                  {(parties || []).map((party) => (
                     <SelectItem key={party.id} value={party.name}>
                       {party.name}
                     </SelectItem>
@@ -457,11 +457,13 @@ export default function JobSheetsTable({
                 <div className="text-sm font-medium">
                   <span>Showing {filteredJobSheets.length} results</span>
                   {searchTerm && <span> for "{searchTerm}"</span>}
-                  {dateFilter !== "all" && (
-                    <span> • Date: {dateFilter}</span>
-                  )}
+                  {dateFilter !== "all" && <span> • Date: {dateFilter}</span>}
                   {partyFilter !== "all" && (
-                    <span> • Party: {partyFilter === "no-party" ? "No Party" : partyFilter}</span>
+                    <span>
+                      {" "}
+                      • Party:{" "}
+                      {partyFilter === "no-party" ? "No Party" : partyFilter}
+                    </span>
                   )}
                 </div>
               </div>

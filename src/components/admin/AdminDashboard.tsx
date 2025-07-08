@@ -95,8 +95,10 @@ export default function EnhancedAdminDashboard() {
             transactionsResponse.json(),
           ]);
 
-          setParties(partiesData);
-          setTransactions(transactionsData);
+          setParties(Array.isArray(partiesData) ? partiesData : []);
+          setTransactions(
+            Array.isArray(transactionsData) ? transactionsData : []
+          );
         }
       } catch (error) {
         console.error("Error fetching parties data:", error);
