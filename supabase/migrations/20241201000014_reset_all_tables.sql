@@ -76,20 +76,71 @@ SELECT safe_reset_sequence('paper_types', 'id');
 
 -- Add some essential paper types back (only if paper_types table exists)
 DO $$
+DECLARE
+    has_description BOOLEAN;
+    has_gsm BOOLEAN;
 BEGIN
     IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'paper_types' AND table_schema = 'public') THEN
-        INSERT INTO public.paper_types (name, description) VALUES 
-        ('ART PAPER', 'High-quality coated paper for printing'),
-        ('MATTE PAPER', 'Non-glossy finish paper'),
-        ('GLOSSY PAPER', 'High-gloss finish paper'),
-        ('CARDSTOCK', 'Heavy weight paper for cards'),
-        ('OFFSET PAPER', 'Standard offset printing paper'),
-        ('BOND PAPER', 'High-quality writing paper'),
-        ('COPIER PAPER', 'Standard copy paper'),
-        ('FRC', 'Folding box board'),
-        ('DUPLEX', 'Two-sided paper'),
-        ('SBS', 'Solid bleached sulfate board')
-        ON CONFLICT (name) DO NOTHING;
+        -- Check if description column exists
+        SELECT EXISTS (
+            SELECT FROM information_schema.columns 
+            WHERE table_name = 'paper_types' 
+            AND column_name = 'description' 
+            AND table_schema = 'public'
+        ) INTO has_description;
+        
+        -- Check if gsm column exists
+        SELECT EXISTS (
+            SELECT FROM information_schema.columns 
+            WHERE table_name = 'paper_types' 
+            AND column_name = 'gsm' 
+            AND table_schema = 'public'
+        ) INTO has_gsm;
+        
+        -- Insert paper types based on available columns
+        IF has_description AND has_gsm THEN
+            -- Full insert with all columns
+            INSERT INTO public.paper_types (name, gsm, description) VALUES 
+            ('ART PAPER', 150, 'High-quality coated paper for printing'),
+            ('MATTE PAPER', 170, 'Non-glossy finish paper'),
+            ('GLOSSY PAPER', 200, 'High-gloss finish paper'),
+            ('CARDSTOCK', 250, 'Heavy weight paper for cards'),
+            ('OFFSET PAPER', NULL, 'Standard offset printing paper'),
+            ('BOND PAPER', NULL, 'High-quality writing paper'),
+            ('COPIER PAPER', NULL, 'Standard copy paper'),
+            ('FRC', NULL, 'Folding box board'),
+            ('DUPLEX', NULL, 'Two-sided paper'),
+            ('SBS', NULL, 'Solid bleached sulfate board')
+            ON CONFLICT (name) DO NOTHING;
+        ELSIF has_gsm THEN
+            -- Insert with GSM but no description
+            INSERT INTO public.paper_types (name, gsm) VALUES 
+            ('ART PAPER', 150),
+            ('MATTE PAPER', 170),
+            ('GLOSSY PAPER', 200),
+            ('CARDSTOCK', 250),
+            ('OFFSET PAPER', NULL),
+            ('BOND PAPER', NULL),
+            ('COPIER PAPER', NULL),
+            ('FRC', NULL),
+            ('DUPLEX', NULL),
+            ('SBS', NULL)
+            ON CONFLICT (name) DO NOTHING;
+        ELSE
+            -- Insert name only
+            INSERT INTO public.paper_types (name) VALUES 
+            ('ART PAPER'),
+            ('MATTE PAPER'),
+            ('GLOSSY PAPER'),
+            ('CARDSTOCK'),
+            ('OFFSET PAPER'),
+            ('BOND PAPER'),
+            ('COPIER PAPER'),
+            ('FRC'),
+            ('DUPLEX'),
+            ('SBS')
+            ON CONFLICT (name) DO NOTHING;
+        END IF;
         
         RAISE NOTICE 'Essential paper types restored';
     ELSE
