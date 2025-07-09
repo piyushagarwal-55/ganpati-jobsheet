@@ -124,7 +124,7 @@ class IntegrationService {
       }
 
       // Step 4: Create job sheet
-      const jobSheetData = this.prepareJobSheetData(submissionData);
+      const jobSheetData = await this.prepareJobSheetData(submissionData);
       const { data: jobSheet, error: jobError } = await supabase
         .from("job_sheets")
         .insert([jobSheetData])
@@ -653,8 +653,14 @@ class IntegrationService {
   /**
    * Helper methods
    */
-  private prepareJobSheetData(submissionData: JobSheetSubmission) {
-    return {
+  private async prepareJobSheetData(submissionData: JobSheetSubmission) {
+    const supabase = await createClient();
+
+    // Get available columns from job_sheets table
+    const availableColumns = await this.getJobSheetsColumns(supabase);
+
+    // Prepare all possible data
+    const allData = {
       job_date: submissionData.job_date,
       party_id: submissionData.party_id,
       party_name: submissionData.party_name,
@@ -683,6 +689,51 @@ class IntegrationService {
       job_status: submissionData.assign_to_machine ? "assigned" : "created",
       created_at: new Date().toISOString(),
     };
+
+    // Filter data to only include columns that exist in the database
+    const filteredData: any = {};
+    for (const [key, value] of Object.entries(allData)) {
+      if (availableColumns.includes(key)) {
+        filteredData[key] = value;
+      }
+    }
+
+    return filteredData;
+  }
+
+  private async getJobSheetsColumns(supabase: any): Promise<string[]> {
+    try {
+      // Query the information schema to get available columns
+      const { data, error } = await supabase
+        .from("information_schema.columns")
+        .select("column_name")
+        .eq("table_name", "job_sheets")
+        .eq("table_schema", "public");
+
+      if (error) throw error;
+
+      return data.map((row: any) => row.column_name);
+    } catch (error) {
+      console.warn(
+        "Failed to get job_sheets columns, using minimal set:",
+        error
+      );
+      // Return minimal set of columns that should always exist
+      return [
+        "id",
+        "job_date",
+        "description",
+        "plate",
+        "size",
+        "sq_inch",
+        "paper_sheet",
+        "imp",
+        "rate",
+        "printing",
+        "uv",
+        "baking",
+      ];
+    }
   }
 
   private calculateTotalCost(submissionData: JobSheetSubmission): number {
