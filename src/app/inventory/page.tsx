@@ -427,7 +427,9 @@ export default function InventoryPage() {
 
       const matchesStockLevel =
         inventoryFilter.stockLevel === "all" ||
+        (inventoryFilter.stockLevel === "debt" && item.current_quantity < 0) ||
         (inventoryFilter.stockLevel === "low" &&
+          item.current_quantity >= 0 &&
           item.current_quantity < 1000) ||
         (inventoryFilter.stockLevel === "normal" &&
           item.current_quantity >= 1000 &&
@@ -1103,10 +1105,34 @@ export default function InventoryPage() {
                     {currentStock ? (
                       <div className="space-y-4">
                         <div className="text-center">
-                          <div className="text-3xl font-bold text-primary">
-                            {currentStock.current_quantity.toLocaleString()}
+                          <div
+                            className={`text-3xl font-bold ${
+                              currentStock.current_quantity < 0
+                                ? "text-red-600"
+                                : "text-primary"
+                            }`}
+                          >
+                            {currentStock.current_quantity < 0 ? "-" : ""}
+                            {Math.abs(
+                              currentStock.current_quantity
+                            ).toLocaleString()}
+                            {currentStock.current_quantity < 0 && (
+                              <span className="text-sm ml-2 bg-red-100 text-red-700 px-2 py-1 rounded">
+                                DEBT
+                              </span>
+                            )}
                           </div>
-                          <div className="text-gray-600">sheets available</div>
+                          <div
+                            className={`${
+                              currentStock.current_quantity < 0
+                                ? "text-red-600 font-semibold"
+                                : "text-gray-600"
+                            }`}
+                          >
+                            {currentStock.current_quantity < 0
+                              ? "sheets in debt"
+                              : "sheets available"}
+                          </div>
                           <div className="text-sm text-gray-500 mt-1">
                             {currentStock.parties?.name} -{" "}
                             {currentStock.paper_type_name}
@@ -1123,19 +1149,46 @@ export default function InventoryPage() {
                           </div>
                           <div className="flex justify-between">
                             <span className="text-gray-600">Available:</span>
-                            <span className="font-semibold text-green-600">
-                              {currentStock.available_quantity.toLocaleString()}
+                            <span
+                              className={`font-semibold ${
+                                currentStock.available_quantity < 0
+                                  ? "text-red-600"
+                                  : "text-green-600"
+                              }`}
+                            >
+                              {currentStock.available_quantity < 0 ? "-" : ""}
+                              {Math.abs(
+                                currentStock.available_quantity
+                              ).toLocaleString()}
+                              {currentStock.available_quantity < 0 && (
+                                <span className="text-xs ml-1 bg-red-100 text-red-700 px-1 rounded">
+                                  DEBT
+                                </span>
+                              )}
                             </span>
                           </div>
                         </div>
 
-                        {currentStock.current_quantity < 1000 && (
-                          <Alert className="bg-orange-50 border-orange-200">
-                            <AlertTriangle className="h-4 w-4 text-orange-600" />
-                            <AlertDescription className="text-orange-800">
-                              Low stock warning! Consider restocking soon.
+                        {currentStock.current_quantity < 0 ? (
+                          <Alert className="bg-red-50 border-red-200">
+                            <AlertTriangle className="h-4 w-4 text-red-600" />
+                            <AlertDescription className="text-red-800">
+                              <strong>DEBT ALERT!</strong> This party owes{" "}
+                              {Math.abs(
+                                currentStock.current_quantity
+                              ).toLocaleString()}{" "}
+                              sheets. Consider restocking or collecting debt.
                             </AlertDescription>
                           </Alert>
+                        ) : (
+                          currentStock.current_quantity < 1000 && (
+                            <Alert className="bg-orange-50 border-orange-200">
+                              <AlertTriangle className="h-4 w-4 text-orange-600" />
+                              <AlertDescription className="text-orange-800">
+                                Low stock warning! Consider restocking soon.
+                              </AlertDescription>
+                            </Alert>
+                          )
                         )}
                       </div>
                     ) : (
@@ -1179,6 +1232,45 @@ export default function InventoryPage() {
                         <span className="text-gray-600">Total Items:</span>
                         <Badge variant="secondary">
                           {inventoryItems.length}
+                        </Badge>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Low Stock:</span>
+                        <Badge variant="destructive">
+                          {
+                            inventoryItems.filter(
+                              (item) =>
+                                item.current_quantity < 1000 &&
+                                item.current_quantity >= 0
+                            ).length
+                          }
+                        </Badge>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-red-600 font-medium">
+                          In Debt:
+                        </span>
+                        <Badge className="bg-red-600 hover:bg-red-700 text-white">
+                          {
+                            inventoryItems.filter(
+                              (item) => item.current_quantity < 0
+                            ).length
+                          }
+                        </Badge>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-red-600 font-medium">
+                          Total Debt:
+                        </span>
+                        <Badge className="bg-red-600 hover:bg-red-700 text-white">
+                          {inventoryItems
+                            .reduce((sum, item) => {
+                              return item.current_quantity < 0
+                                ? sum + Math.abs(item.current_quantity)
+                                : sum;
+                            }, 0)
+                            .toLocaleString()}{" "}
+                          sheets
                         </Badge>
                       </div>
                       <div className="flex justify-between">
@@ -1341,6 +1433,11 @@ export default function InventoryPage() {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="all">All levels</SelectItem>
+                        <SelectItem value="debt">
+                          <span className="text-red-600 font-medium">
+                            In Debt (Negative)
+                          </span>
+                        </SelectItem>
                         <SelectItem value="low">
                           Low stock (&lt; 1,000)
                         </SelectItem>
@@ -1412,13 +1509,50 @@ export default function InventoryPage() {
                             )}
                           </TableCell>
                           <TableCell className="text-right font-mono">
-                            {item.current_quantity.toLocaleString()}
+                            <span
+                              className={
+                                item.current_quantity < 0
+                                  ? "text-red-600 font-bold"
+                                  : ""
+                              }
+                            >
+                              {item.current_quantity < 0 ? "-" : ""}
+                              {Math.abs(item.current_quantity).toLocaleString()}
+                              {item.current_quantity < 0 && (
+                                <span className="text-xs ml-1 bg-red-100 text-red-700 px-1 rounded">
+                                  DEBT
+                                </span>
+                              )}
+                            </span>
                           </TableCell>
-                          <TableCell className="text-right font-mono text-green-600">
-                            {item.available_quantity.toLocaleString()}
+                          <TableCell className="text-right font-mono">
+                            <span
+                              className={
+                                item.available_quantity < 0
+                                  ? "text-red-600 font-bold"
+                                  : "text-green-600"
+                              }
+                            >
+                              {item.available_quantity < 0 ? "-" : ""}
+                              {Math.abs(
+                                item.available_quantity
+                              ).toLocaleString()}
+                              {item.available_quantity < 0 && (
+                                <span className="text-xs ml-1 bg-red-100 text-red-700 px-1 rounded">
+                                  DEBT
+                                </span>
+                              )}
+                            </span>
                           </TableCell>
                           <TableCell className="text-center">
-                            {item.current_quantity < 1000 ? (
+                            {item.current_quantity < 0 ? (
+                              <Badge
+                                variant="destructive"
+                                className="text-xs bg-red-600 text-white animate-pulse"
+                              >
+                                IN DEBT
+                              </Badge>
+                            ) : item.current_quantity < 1000 ? (
                               <Badge variant="destructive" className="text-xs">
                                 Low Stock
                               </Badge>

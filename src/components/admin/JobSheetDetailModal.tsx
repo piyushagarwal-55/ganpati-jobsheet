@@ -991,11 +991,36 @@ export default function JobSheetDetailModal({
                       />
                     </div>
                   ) : (
-                    <div className="flex items-center gap-2 mt-1 p-2 bg-gray-50 rounded">
-                      <DollarSign className="w-4 h-4 text-gray-500" />
-                      <span className="font-medium">
-                        {formatCurrency(jobSheet.uv || 0)}
-                      </span>
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2 p-2 bg-gray-50 rounded">
+                        <DollarSign className="w-4 h-4 text-gray-500" />
+                        <span className="font-medium">
+                          {formatCurrency(jobSheet.uv || 0)}
+                        </span>
+                      </div>
+                      {jobSheet.uv_coating_enabled &&
+                        jobSheet.uv_coating_method !== "manual" && (
+                          <div className="text-xs text-blue-600 bg-blue-50 p-2 rounded">
+                            <span className="font-medium">
+                              {jobSheet.uv_coating_method === "per_100_sqin"
+                                ? "Per 100 sq.in"
+                                : "Per sheet"}{" "}
+                              calculation
+                            </span>
+                            {jobSheet.uv_coating_method === "per_100_sqin" && (
+                              <div>
+                                Rate: ₹{jobSheet.uv_rate_per_100_sqin || 0} per
+                                100 sq.in
+                              </div>
+                            )}
+                            {jobSheet.uv_coating_method === "per_sheet" && (
+                              <div>
+                                Rate: ₹{jobSheet.uv_rate_per_sheet || 0} per
+                                sheet
+                              </div>
+                            )}
+                          </div>
+                        )}
                     </div>
                   )}
                 </div>
@@ -1023,11 +1048,19 @@ export default function JobSheetDetailModal({
                       />
                     </div>
                   ) : (
-                    <div className="flex items-center gap-2 mt-1 p-2 bg-gray-50 rounded">
-                      <DollarSign className="w-4 h-4 text-gray-500" />
-                      <span className="font-medium">
-                        {formatCurrency(jobSheet.baking || 0)}
-                      </span>
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2 p-2 bg-gray-50 rounded">
+                        <DollarSign className="w-4 h-4 text-gray-500" />
+                        <span className="font-medium">
+                          {formatCurrency(jobSheet.baking || 0)}
+                        </span>
+                      </div>
+                      {jobSheet.plate && (
+                        <div className="text-xs text-gray-600 bg-gray-50 p-2 rounded">
+                          <span className="font-medium">Calculation: </span>
+                          ₹{((jobSheet.baking || 0) / (jobSheet.plate || 1)).toFixed(2)} per plate × {jobSheet.plate} plates
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

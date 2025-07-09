@@ -225,15 +225,14 @@ class IntegrationService {
       }
     }
 
-    // Check inventory availability
+    // Check inventory availability (now allowing negative quantities)
     if (
       submissionData.used_from_inventory &&
       submissionData.inventory_item_id
     ) {
-      const requiredQuantity = parseInt(submissionData.paper_sheet);
       const { data: inventoryItem } = await supabase
         .from("inventory_items")
-        .select("available_quantity")
+        .select("available_quantity, paper_type_name")
         .eq("id", submissionData.inventory_item_id)
         .single();
 
@@ -241,12 +240,8 @@ class IntegrationService {
         return { success: false, error: "Selected inventory item not found" };
       }
 
-      if (inventoryItem.available_quantity < requiredQuantity) {
-        return {
-          success: false,
-          error: `Insufficient inventory. Required: ${requiredQuantity}, Available: ${inventoryItem.available_quantity}`,
-        };
-      }
+      // Note: We no longer prevent negative inventory
+      // This allows creating "debt" when party doesn't have enough paper
     }
 
     // Check machine availability
@@ -294,11 +289,8 @@ class IntegrationService {
         return { success: false, error: "Inventory item not found" };
       }
 
-      if (inventoryItem.available_quantity < quantity) {
-        return { success: false, error: "Insufficient inventory available" };
-      }
-
-      // Update available quantity (reserve)
+      // Allow negative inventory - update available quantity (reserve)
+      // This creates "debt" when there's insufficient stock
       const newAvailableQuantity = inventoryItem.available_quantity - quantity;
       const newReservedQuantity = inventoryItem.reserved_quantity + quantity;
 

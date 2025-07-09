@@ -107,7 +107,7 @@ export async function POST(req: NextRequest) {
             const newAvailableQuantity =
               inventoryItem.available_quantity - usedQuantity;
 
-            // Update inventory item quantities
+            // Update inventory item quantities (allowing negative quantities for debt tracking)
             const { error: inventoryUpdateError } = await supabase
               .from("inventory_items")
               .update({
@@ -120,9 +120,11 @@ export async function POST(req: NextRequest) {
             if (inventoryUpdateError) {
               console.error("Error updating inventory:", inventoryUpdateError);
             } else {
-              console.log(
-                `Inventory updated successfully. Used: ${usedQuantity}, Remaining: ${newCurrentQuantity}`
-              );
+              const statusMessage =
+                newCurrentQuantity < 0
+                  ? `Inventory now in debt. Used: ${usedQuantity}, Debt: ${Math.abs(newCurrentQuantity)}`
+                  : `Inventory updated successfully. Used: ${usedQuantity}, Remaining: ${newCurrentQuantity}`;
+              console.log(statusMessage);
             }
 
             // Create inventory transaction record
@@ -168,15 +170,15 @@ export async function POST(req: NextRequest) {
     if (data.party_id) {
       const totalJobCost =
         (parseFloat(data.printing) || 0) +
-                          (parseFloat(data.uv) || 0) + 
-                          (parseFloat(data.baking) || 0);
+        (parseFloat(data.uv) || 0) +
+        (parseFloat(data.baking) || 0);
 
       if (totalJobCost > 0) {
         try {
           console.log(
             `Updating party balance for party ${data.party_id}, deducting amount: ${totalJobCost}`
           );
-          
+
           // Get current party balance
           const { data: partyData, error: partyError } = await supabase
             .from("parties")
@@ -191,7 +193,7 @@ export async function POST(req: NextRequest) {
             // Update party balance directly
             const { error: balanceUpdateError } = await supabase
               .from("parties")
-              .update({ 
+              .update({
                 balance: newBalance,
                 updated_at: new Date().toISOString(),
               })
@@ -286,4 +288,4 @@ export async function DELETE(req: NextRequest) {
   if (error)
     return NextResponse.json({ error: error.message }, { status: 400 });
   return NextResponse.json({ success: true }, { status: 200 });
-} 
+}

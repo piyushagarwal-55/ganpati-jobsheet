@@ -14,6 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import { submitJobSheetAction } from "@/app/actions";
 import { useInventory } from "@/hooks/useInventory";
 import { InventoryItem } from "@/types/inventory";
@@ -68,6 +69,11 @@ interface JobSheetData {
   paper_size?: string | null;
   paper_gsm?: number | null;
   plate_code?: string;
+  // UV coating calculation fields
+  uv_coating_enabled?: boolean;
+  uv_coating_method?: string;
+  uv_rate_per_100_sqin?: string;
+  uv_rate_per_sheet?: string;
   // Machine assignment fields
   machine_id?: number | null;
   assign_to_machine?: boolean;
@@ -271,12 +277,11 @@ export default function JobSheetForm() {
     }
   }, [formData.paper_sheet, formData.job_type]);
 
-  // Filter available inventory items based on selected party
+  // Filter available inventory items based on selected party (including negative quantities for debt tracking)
   useEffect(() => {
     if (selectedParty && inventoryItems) {
       const partyInventory = inventoryItems.filter(
-        (item) =>
-          item.party_id === selectedParty.id && item.current_quantity > 0
+        (item) => item.party_id === selectedParty.id
       );
       setAvailableInventoryItems(partyInventory);
     } else {
@@ -587,6 +592,33 @@ export default function JobSheetForm() {
     return (plateCode * plateCount).toFixed(2);
   };
 
+  const calculateUVCoating = () => {
+    if (!formData.uv_coating_enabled) {
+      return parseFloat(formData.uv || "0");
+    }
+
+    const method = formData.uv_coating_method || "manual";
+    const sqInch = parseFloat(formData.sq_inch || "0");
+    const paperSheets = parseFloat(formData.paper_sheet || "0");
+
+    switch (method) {
+      case "per_100_sqin":
+        const ratePer100SqIn = parseFloat(formData.uv_rate_per_100_sqin || "0");
+        return (sqInch * paperSheets * ratePer100SqIn) / 100;
+      case "per_sheet":
+        const ratePerSheet = parseFloat(formData.uv_rate_per_sheet || "0");
+        return paperSheets * ratePerSheet;
+      default:
+        return parseFloat(formData.uv || "0");
+    }
+  };
+
+  const getBakingCost = () => {
+    const bakingRate = parseFloat(formData.baking || "0");
+    const plateCount = parseFloat(formData.plate || "0");
+    return (bakingRate * plateCount).toFixed(2);
+  };
+
   const handleSizeChange = (value: string) => {
     updateFormData("size", value);
     if (value && value.includes("*")) {
@@ -669,6 +701,8 @@ export default function JobSheetForm() {
     } = {
       ...formData,
       printing: printingCost,
+      uv: calculateUVCoating().toString(),
+      baking: getBakingCost(),
       party_id: selectedParty?.id || null,
       paper_type_id: formData.paper_type_id
         ? parseInt(formData.paper_type_id.toString())
@@ -679,6 +713,11 @@ export default function JobSheetForm() {
       paper_type: paperProvidedByParty ? paperType : null,
       paper_size: paperProvidedByParty ? paperSize : null,
       paper_gsm: paperProvidedByParty && paperGSM ? parseInt(paperGSM) : null,
+      // UV coating calculation fields
+      uv_coating_enabled: formData.uv_coating_enabled || false,
+      uv_coating_method: formData.uv_coating_method || "manual",
+      uv_rate_per_100_sqin: formData.uv_rate_per_100_sqin || "0",
+      uv_rate_per_sheet: formData.uv_rate_per_sheet || "0",
       // Machine assignment fields
       machine_id: assignToMachine ? selectedMachine?.id || null : null,
       assign_to_machine: assignToMachine,
@@ -1088,8 +1127,12 @@ export default function JobSheetForm() {
                     key={item.id}
                     className={`p-3 border rounded-lg cursor-pointer transition-colors ${
                       selectedInventoryItem?.id === item.id
-                        ? "border-green-500 bg-green-100"
-                        : "border-green-200 hover:border-green-300 bg-white"
+                        ? item.available_quantity < 0
+                          ? "border-red-500 bg-red-50"
+                          : "border-green-500 bg-green-100"
+                        : item.available_quantity < 0
+                          ? "border-red-200 hover:border-red-300 bg-red-25"
+                          : "border-green-200 hover:border-green-300 bg-white"
                     }`}
                     onClick={() => {
                       setSelectedInventoryItem(item);
@@ -1102,16 +1145,55 @@ export default function JobSheetForm() {
                   >
                     <div className="flex justify-between items-start">
                       <div>
-                        <h4 className="font-medium text-green-900">
+                        <h4
+                          className={`font-medium ${
+                            item.available_quantity < 0
+                              ? "text-red-900"
+                              : "text-green-900"
+                          }`}
+                        >
                           {item.paper_type_name}
                         </h4>
-                        <p className="text-sm text-green-700">{item.gsm} GSM</p>
+                        <p
+                          className={`text-sm ${
+                            item.available_quantity < 0
+                              ? "text-red-700"
+                              : "text-green-700"
+                          }`}
+                        >
+                          {item.gsm} GSM
+                        </p>
                       </div>
                       <div className="text-right">
-                        <p className="font-medium text-green-900">
-                          {item.available_quantity.toLocaleString()} sheets
+                        <p
+                          className={`font-medium ${
+                            item.available_quantity < 0
+                              ? "text-red-900"
+                              : "text-green-900"
+                          }`}
+                        >
+                          {item.available_quantity < 0 ? "-" : ""}
+                          {Math.abs(
+                            item.available_quantity
+                          ).toLocaleString()}{" "}
+                          sheets
+                          {item.available_quantity < 0 && (
+                            <span className="text-xs ml-1 bg-red-100 text-red-700 px-1 rounded">
+                              DEBT
+                            </span>
+                          )}
                         </p>
-                        <p className="text-xs text-green-600">Available</p>
+                        <p
+                          className={`text-xs ${
+                            item.available_quantity < 0
+                              ? "text-red-600"
+                              : "text-green-600"
+                          }`}
+                        >
+                          {item.available_quantity < 0
+                            ? "In Debt"
+                            : "Available"}
+                        </p>
                       </div>
                     </div>
                     {item.reserved_quantity > 0 && (
@@ -1119,6 +1201,19 @@ export default function JobSheetForm() {
                         {item.reserved_quantity.toLocaleString()} sheets
                         reserved
                       </p>
+                    )}
+                    {item.available_quantity < 0 && (
+                      <div className="mt-2 p-2 bg-red-100 border border-red-200 rounded text-xs">
+                        <p className="text-red-800 font-medium">
+                          ⚠️ Debt Warning
+                        </p>
+                        <p className="text-red-700">
+                          Using this will increase debt by the sheets used.
+                          Party currently owes{" "}
+                          {Math.abs(item.available_quantity).toLocaleString()}{" "}
+                          sheets.
+                        </p>
+                      </div>
                     )}
                   </div>
                 ))}
@@ -1668,32 +1763,197 @@ export default function JobSheetForm() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="space-y-2">
-          <Label htmlFor="uv">UV Coating Cost</Label>
-          <Input
-            id="uv"
-            type="number"
-            step="0.01"
-            min="0"
-            placeholder="0.00"
-            value={formData.uv}
-            onChange={(e) => updateFormData("uv", e.target.value)}
+      {/* UV Coating Section */}
+      <div className="space-y-4">
+        <div className="flex items-center space-x-2">
+          <Switch
+            id="uv_coating_enabled"
+            checked={formData.uv_coating_enabled || false}
+            onCheckedChange={(checked) => {
+              updateFormData("uv_coating_enabled", checked);
+              if (!checked) {
+                updateFormData("uv_coating_method", "manual");
+                updateFormData("uv", "0");
+              }
+            }}
           />
+          <Label htmlFor="uv_coating_enabled" className="text-sm font-medium">
+            Enable UV Coating Calculation
+          </Label>
         </div>
-        <div className="space-y-2">
-          <Label htmlFor="baking">Baking Cost</Label>
-          <Input
-            id="baking"
-            type="number"
-            step="0.01"
-            min="0"
-            placeholder="0.00"
-            value={formData.baking}
-            onChange={(e) => updateFormData("baking", e.target.value)}
-          />
+
+        {formData.uv_coating_enabled && (
+          <Card className="border-blue-200 bg-blue-50">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm text-blue-900">
+                UV Coating Options
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="uv_coating_method">Calculation Method</Label>
+                <Select
+                  value={formData.uv_coating_method || "manual"}
+                  onValueChange={(value) =>
+                    updateFormData("uv_coating_method", value)
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select calculation method" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="manual">Manual Entry</SelectItem>
+                    <SelectItem value="per_100_sqin">
+                      Per 100 Square Inches
+                    </SelectItem>
+                    <SelectItem value="per_sheet">Per Sheet</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {formData.uv_coating_method === "per_100_sqin" && (
+                <div className="space-y-2">
+                  <Label htmlFor="uv_rate_per_100_sqin">
+                    Rate per 100 Square Inches
+                  </Label>
+                  <Input
+                    id="uv_rate_per_100_sqin"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="Enter rate per 100 sq. inches"
+                    value={formData.uv_rate_per_100_sqin || ""}
+                    onChange={(e) =>
+                      updateFormData("uv_rate_per_100_sqin", e.target.value)
+                    }
+                  />
+                  <p className="text-xs text-blue-600">
+                    Total: {formData.sq_inch || 0} sq.in ×{" "}
+                    {formData.paper_sheet || 0} sheets × rate ÷ 100
+                  </p>
+                </div>
+              )}
+
+              {formData.uv_coating_method === "per_sheet" && (
+                <div className="space-y-2">
+                  <Label htmlFor="uv_rate_per_sheet">Rate per Sheet</Label>
+                  <Input
+                    id="uv_rate_per_sheet"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="Enter rate per sheet"
+                    value={formData.uv_rate_per_sheet || ""}
+                    onChange={(e) =>
+                      updateFormData("uv_rate_per_sheet", e.target.value)
+                    }
+                  />
+                  <p className="text-xs text-blue-600">
+                    Total: {formData.paper_sheet || 0} sheets × rate per sheet
+                  </p>
+                </div>
+              )}
+
+              {formData.uv_coating_method === "manual" && (
+                <div className="space-y-2">
+                  <Label htmlFor="uv">Manual UV Coating Cost</Label>
+                  <Input
+                    id="uv"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="0.00"
+                    value={formData.uv || ""}
+                    onChange={(e) => updateFormData("uv", e.target.value)}
+                  />
+                </div>
+              )}
+
+              <div className="p-3 bg-white rounded border">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm font-medium text-blue-700">
+                    Calculated UV Cost:
+                  </span>
+                  <span className="font-semibold text-blue-900">
+                    ₹{calculateUVCoating().toFixed(2)}
+                  </span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {!formData.uv_coating_enabled && (
+          <div className="space-y-2">
+            <Label htmlFor="uv">UV Coating Cost</Label>
+            <Input
+              id="uv"
+              type="number"
+              step="0.01"
+              min="0"
+              placeholder="0.00"
+              value={formData.uv || ""}
+              onChange={(e) => updateFormData("uv", e.target.value)}
+            />
+          </div>
+        )}
+      </div>
+
+      {/* Baking Cost Section */}
+      <div className="space-y-2">
+        <Label htmlFor="baking">Baking Cost (per plate)</Label>
+        <Input
+          id="baking"
+          type="number"
+          step="0.01"
+          min="0"
+          placeholder="0.00"
+          value={formData.baking || ""}
+          onChange={(e) => updateFormData("baking", e.target.value)}
+        />
+        <div className="p-3 bg-gray-50 rounded border">
+          <div className="flex justify-between items-center text-sm">
+            <span className="text-gray-700">Total Baking Cost:</span>
+            <span className="font-semibold text-gray-900">
+              ₹{getBakingCost()} ({formData.baking || "0"} ×{" "}
+              {formData.plate || "0"} plates)
+            </span>
+          </div>
         </div>
       </div>
+
+      {/* Paper Shortage Warning */}
+      {selectedParty && 
+       paperSource === "inventory" && 
+       selectedInventoryItem && 
+       formData.paper_sheet && 
+       (() => {
+         const requiredSheets = parseFloat(formData.paper_sheet) || 0;
+         const availableSheets = selectedInventoryItem.available_quantity || 0;
+         const shortage = requiredSheets - availableSheets;
+         return shortage > 0 ? (
+           <Card className="bg-orange-50 border-orange-200">
+             <CardContent className="pt-4">
+               <div className="flex items-start gap-2">
+                 <AlertTriangle className="w-5 h-5 text-orange-600 mt-0.5" />
+                 <div>
+                   <h4 className="font-semibold text-orange-800 mb-1">Paper Shortage Warning</h4>
+                   <p className="text-sm text-orange-700 mb-2">
+                     You need <strong>{requiredSheets.toLocaleString()}</strong> sheets but only{" "}
+                     <strong>{Math.max(0, availableSheets).toLocaleString()}</strong> are available.
+                   </p>
+                   <p className="text-sm text-orange-700 mb-2">
+                     This will create a <strong className="text-red-600">debt of {shortage.toLocaleString()} sheets</strong> for {selectedParty.name}.
+                   </p>
+                   <p className="text-xs text-orange-600">
+                     ✓ Job creation will still proceed - inventory will show negative balance (debt)
+                   </p>
+                 </div>
+               </div>
+             </CardContent>
+           </Card>
+         ) : null;
+       })()}
 
       {/* Cost Summary */}
       <Card className="bg-blue-50 border-blue-200">
@@ -1726,16 +1986,27 @@ export default function JobSheetForm() {
             </span>
           </div>
           <div className="flex justify-between">
-            <span className="text-blue-700">UV:</span>
+            <span className="text-blue-700">UV Coating:</span>
             <span className="font-medium text-blue-900">
-              ₹{formData.uv || "0.00"}
+              ₹{calculateUVCoating().toFixed(2)}
             </span>
           </div>
+          {formData.uv_coating_enabled &&
+            formData.uv_coating_method !== "manual" && (
+              <div className="text-xs text-blue-600 ml-4">
+                {formData.uv_coating_method === "per_100_sqin"
+                  ? `${formData.sq_inch || 0} sq.in × ${formData.paper_sheet || 0} sheets × ₹${formData.uv_rate_per_100_sqin || 0} ÷ 100`
+                  : `${formData.paper_sheet || 0} sheets × ₹${formData.uv_rate_per_sheet || 0}`}
+              </div>
+            )}
           <div className="flex justify-between">
             <span className="text-blue-700">Baking:</span>
             <span className="font-medium text-blue-900">
-              ₹{formData.baking || "0.00"}
+              ₹{getBakingCost()}
             </span>
+          </div>
+          <div className="text-xs text-blue-600 ml-4">
+            ₹{formData.baking || 0} × {formData.plate || 0} plates
           </div>
           <div className="border-t border-blue-300 pt-2 mt-2">
             <div className="flex justify-between font-semibold">
@@ -1744,8 +2015,8 @@ export default function JobSheetForm() {
                 ₹
                 {(
                   parseFloat(calculatePrintingCost()) +
-                  parseFloat(formData.uv || "0") +
-                  parseFloat(formData.baking || "0")
+                  calculateUVCoating() +
+                  parseFloat(getBakingCost())
                 ).toFixed(2)}
               </span>
             </div>
@@ -1764,8 +2035,8 @@ export default function JobSheetForm() {
                   className={`font-medium ${
                     selectedParty.balance -
                       (parseFloat(calculatePrintingCost()) +
-                        parseFloat(formData.uv || "0") +
-                        parseFloat(formData.baking || "0")) <
+                        calculateUVCoating() +
+                        parseFloat(getBakingCost())) <
                     0
                       ? "text-red-600"
                       : "text-blue-900"
@@ -1775,8 +2046,8 @@ export default function JobSheetForm() {
                   {(
                     selectedParty.balance -
                     (parseFloat(calculatePrintingCost()) +
-                      parseFloat(formData.uv || "0") +
-                      parseFloat(formData.baking || "0"))
+                      calculateUVCoating() +
+                      parseFloat(getBakingCost()))
                   ).toFixed(2)}
                 </span>
               </div>
@@ -1790,8 +2061,8 @@ export default function JobSheetForm() {
   const renderStep4 = () => {
     const totalCost = (
       parseFloat(calculatePrintingCost()) +
-      parseFloat(formData.uv || "0") +
-      parseFloat(formData.baking || "0")
+      calculateUVCoating() +
+      parseFloat(getBakingCost())
     ).toFixed(2);
 
     return (
@@ -2005,11 +2276,22 @@ export default function JobSheetForm() {
                 </div>
                 <div>
                   <span className="font-medium">UV Coating:</span> ₹
-                  {formData.uv || "0.00"}
+                  {calculateUVCoating().toFixed(2)}
+                  {formData.uv_coating_enabled &&
+                    formData.uv_coating_method !== "manual" && (
+                      <div className="text-xs text-gray-500 mt-1">
+                        {formData.uv_coating_method === "per_100_sqin"
+                          ? "Per 100 sq.in"
+                          : "Per sheet"}
+                      </div>
+                    )}
                 </div>
                 <div>
                   <span className="font-medium">Baking:</span> ₹
-                  {formData.baking || "0.00"}
+                  {getBakingCost()}
+                  <div className="text-xs text-gray-500 mt-1">
+                    ₹{formData.baking || "0"} × {formData.plate || "0"} plates
+                  </div>
                 </div>
               </div>
 
@@ -2064,15 +2346,27 @@ export default function JobSheetForm() {
                   <div className="flex justify-between">
                     <span className="text-blue-700">UV Coating:</span>
                     <span className="font-medium text-blue-900">
-                      ₹{formData.uv || "0.00"}
+                      ₹{calculateUVCoating().toFixed(2)}
                     </span>
                   </div>
+                  {formData.uv_coating_enabled &&
+                    formData.uv_coating_method !== "manual" && (
+                      <div className="text-xs text-blue-600 ml-4">
+                        {formData.uv_coating_method === "per_100_sqin"
+                          ? `${formData.sq_inch || 0} sq.in × ${formData.paper_sheet || 0} sheets × ₹${formData.uv_rate_per_100_sqin || 0} ÷ 100`
+                          : `${formData.paper_sheet || 0} sheets × ₹${formData.uv_rate_per_sheet || 0} per sheet`}
+                      </div>
+                    )}
 
                   <div className="flex justify-between">
                     <span className="text-blue-700">Baking:</span>
                     <span className="font-medium text-blue-900">
-                      ₹{formData.baking || "0.00"}
+                      ₹{getBakingCost()}
                     </span>
+                  </div>
+                  <div className="text-xs text-blue-600 ml-4">
+                    Baking Rate (₹{formData.baking || 0}) × Plates (
+                    {formData.plate || 0})
                   </div>
                 </div>
               </div>

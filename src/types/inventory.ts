@@ -133,6 +133,8 @@ export interface InventoryStats {
   totalItems: number;
   totalQuantity: number;
   lowStockItems: number;
+  debtItems: number;
+  totalDebtQuantity: number;
   parties: number;
   paperTypes: number;
 }
@@ -141,6 +143,7 @@ export interface InventoryDashboardData {
   stats: InventoryStats;
   recentTransactions: InventoryTransaction[];
   lowStockItems: InventoryItem[];
+  debtItems: InventoryItem[];
   topParties: Array<{
     party_id: number;
     party_name: string;

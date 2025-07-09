@@ -1,4 +1,7 @@
 // src/types/jobsheet.ts
+
+export type UVCoatingMethod = "manual" | "per_100_sqin" | "per_sheet";
+
 export interface JobSheet {
   id: number;
   job_date: string | null;
@@ -17,6 +20,12 @@ export interface JobSheet {
   printing: number | null;
   uv: number | null;
   baking: number | null;
+
+  // UV coating calculation fields
+  uv_coating_enabled?: boolean | null;
+  uv_coating_method?: UVCoatingMethod | null;
+  uv_rate_per_100_sqin?: number | null;
+  uv_rate_per_sheet?: number | null;
   gsm?: number | null;
   paper_type_id?: number | null;
   paper_type_name?: string | null;

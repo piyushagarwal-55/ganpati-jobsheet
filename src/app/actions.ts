@@ -224,21 +224,21 @@ export const submitJobSheetAction = async (formData: JobSheetData) => {
     };
 
     // Use the integration service for complete workflow management
-    const result = await integrationService.submitJobSheetWithIntegrations(submissionData);
+    const result =
+      await integrationService.submitJobSheetWithIntegrations(submissionData);
 
     if (!result.success) {
       return {
         success: false,
-        error: result.error || "Failed to submit job sheet"
+        error: result.error || "Failed to submit job sheet",
       };
     }
 
     return {
       success: true,
       data: result.data,
-      message: "Job sheet created successfully with full integration!"
+      message: "Job sheet created successfully with full integration!",
     };
-
   } catch (error: any) {
     console.error("Job sheet submission error:", error);
     return {
@@ -275,7 +275,7 @@ async function handleInventoryDeduction(
         const newAvailableQuantity =
           inventoryItem.available_quantity - usedQuantity;
 
-        // Update inventory item quantities
+        // Update inventory item quantities (allowing negative quantities for debt tracking)
         const { error: inventoryUpdateError } = await supabase
           .from("inventory_items")
           .update({
@@ -288,9 +288,11 @@ async function handleInventoryDeduction(
         if (inventoryUpdateError) {
           console.error("Error updating inventory:", inventoryUpdateError);
         } else {
-          console.log(
-            `Inventory updated successfully. Used: ${usedQuantity}, Remaining: ${newCurrentQuantity}`
-          );
+          const statusMessage =
+            newCurrentQuantity < 0
+              ? `Inventory now in debt. Used: ${usedQuantity}, Debt: ${Math.abs(newCurrentQuantity)}`
+              : `Inventory updated successfully. Used: ${usedQuantity}, Remaining: ${newCurrentQuantity}`;
+          console.log(statusMessage);
         }
 
         // Create inventory transaction record

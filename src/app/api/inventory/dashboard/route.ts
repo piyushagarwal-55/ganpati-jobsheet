@@ -36,8 +36,21 @@ export async function GET() {
         0
       ) || 0;
     const lowStockItems =
-      inventoryItems?.filter((item) => (item.current_quantity || 0) < 1000)
+      inventoryItems?.filter(
+        (item) =>
+          (item.current_quantity || 0) < 1000 &&
+          (item.current_quantity || 0) >= 0
+      ).length || 0;
+
+    // Calculate debt statistics
+    const debtItems =
+      inventoryItems?.filter((item) => (item.current_quantity || 0) < 0)
         .length || 0;
+    const totalDebtQuantity =
+      inventoryItems?.reduce((sum, item) => {
+        const quantity = item.current_quantity || 0;
+        return quantity < 0 ? sum + Math.abs(quantity) : sum;
+      }, 0) || 0;
 
     // Get unique parties and paper types count
     const uniqueParties = new Set(inventoryItems?.map((item) => item.party_id))
@@ -46,10 +59,17 @@ export async function GET() {
       inventoryItems?.map((item) => item.paper_type_id)
     ).size;
 
-    // Get low stock items (less than 1000 sheets)
+    // Get low stock items (less than 1000 sheets, but not negative)
     const lowStockItemsList =
-      inventoryItems?.filter((item) => (item.current_quantity || 0) < 1000) ||
-      [];
+      inventoryItems?.filter(
+        (item) =>
+          (item.current_quantity || 0) < 1000 &&
+          (item.current_quantity || 0) >= 0
+      ) || [];
+
+    // Get debt items (negative quantities)
+    const debtItemsList =
+      inventoryItems?.filter((item) => (item.current_quantity || 0) < 0) || [];
 
     // Get top parties by total quantity
     const partiesMap = new Map();
@@ -78,11 +98,14 @@ export async function GET() {
         totalItems,
         totalQuantity,
         lowStockItems,
+        debtItems,
+        totalDebtQuantity,
         parties: uniqueParties,
         paperTypes: uniquePaperTypes,
       },
       recentTransactions: transactions || [],
       lowStockItems: lowStockItemsList,
+      debtItems: debtItemsList,
       topParties,
     };
 
