@@ -676,7 +676,6 @@ class IntegrationService {
       paper_size: submissionData.paper_size,
       paper_gsm: submissionData.paper_gsm,
       machine_id: submissionData.machine_id,
-      assign_to_machine: submissionData.assign_to_machine,
       paper_source: submissionData.paper_source,
       inventory_item_id: submissionData.inventory_item_id,
       used_from_inventory: submissionData.used_from_inventory,
@@ -723,13 +722,24 @@ class IntegrationService {
         const quantity = Math.abs(reservation.total_sheets);
 
         // Release reserved inventory
-        await supabase
+        const { data: currentItem } = await supabase
           .from("inventory_items")
-          .update({
-            available_quantity: supabase.sql`available_quantity + ${quantity}`,
-            reserved_quantity: supabase.sql`reserved_quantity - ${quantity}`,
-          })
-          .eq("id", reservation.inventory_item_id);
+          .select("available_quantity, reserved_quantity")
+          .eq("id", reservation.inventory_item_id)
+          .single();
+
+        if (currentItem) {
+          await supabase
+            .from("inventory_items")
+            .update({
+              available_quantity: currentItem.available_quantity + quantity,
+              reserved_quantity: Math.max(
+                0,
+                currentItem.reserved_quantity - quantity
+              ),
+            })
+            .eq("id", reservation.inventory_item_id);
+        }
 
         // Create release transaction
         await supabase.from("inventory_transactions").insert([

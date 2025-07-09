@@ -138,7 +138,6 @@ SET current_job_count = (
   FROM job_sheets 
   WHERE machine_id = machines.id 
   AND job_status IN ('assigned', 'in_progress')
-  AND (is_deleted = FALSE OR is_deleted IS NULL)
 );
 
 -- Update machine availability based on current job counts
@@ -173,8 +172,7 @@ SELECT
 FROM job_sheets js
 LEFT JOIN machines m ON js.machine_id = m.id
 LEFT JOIN inventory_items ii ON js.inventory_item_id = ii.id
-LEFT JOIN workflow_status ws ON js.id = ws.job_sheet_id
-WHERE (js.is_deleted = FALSE OR js.is_deleted IS NULL);
+LEFT JOIN workflow_status ws ON js.id = ws.job_sheet_id;
 
 -- Create function to get workflow statistics
 CREATE OR REPLACE FUNCTION get_workflow_stats()
@@ -183,13 +181,12 @@ DECLARE
   result JSON;
 BEGIN
   SELECT json_build_object(
-    'total_jobs', (SELECT COUNT(*) FROM job_sheets WHERE (is_deleted = FALSE OR is_deleted IS NULL)),
+    'total_jobs', (SELECT COUNT(*) FROM job_sheets),
     'jobs_by_status', (
       SELECT json_object_agg(job_status, count)
       FROM (
         SELECT COALESCE(job_status, 'created') as job_status, COUNT(*) as count
         FROM job_sheets 
-        WHERE (is_deleted = FALSE OR is_deleted IS NULL)
         GROUP BY job_status
       ) s
     ),
