@@ -8,7 +8,7 @@ export async function GET() {
   try {
     const supabase = await createClient();
 
-    // Get all inventory transactions with related data
+    // Get all inventory transactions including soft deleted ones
     const { data: transactions, error } = await supabase
       .from("inventory_transactions")
       .select(

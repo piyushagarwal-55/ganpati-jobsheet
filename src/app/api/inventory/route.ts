@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "../../../../supabase/server";
 
 // Force dynamic rendering for this route
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
@@ -196,21 +196,68 @@ export async function DELETE(request: Request) {
     }
 
     if (deleteType === "transaction") {
-      // Delete a specific transaction
-      const { error: deleteError } = await supabase
+      // Use soft delete for transactions instead of hard delete
+      const { data: existingTransaction, error: fetchError } = await supabase
         .from("inventory_transactions")
-        .delete()
-        .eq("id", itemId);
+        .select("id, is_deleted, inventory_item_id")
+        .eq("id", itemId)
+        .single();
 
-      if (deleteError) {
-        console.error("Error deleting transaction:", deleteError);
+      if (fetchError || !existingTransaction) {
         return NextResponse.json(
           {
             success: false,
-            error: deleteError.message,
+            error: "Transaction not found",
+          },
+          { status: 404 }
+        );
+      }
+
+      if (existingTransaction.is_deleted) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Transaction is already deleted",
+          },
+          { status: 400 }
+        );
+      }
+
+      // Soft delete the transaction
+      const { error: softDeleteError } = await supabase
+        .from("inventory_transactions")
+        .update({
+          is_deleted: true,
+          deleted_at: new Date().toISOString(),
+          deletion_reason: "Deleted via inventory management",
+          deleted_by: "Admin",
+        })
+        .eq("id", itemId);
+
+      if (softDeleteError) {
+        console.error("Error soft deleting transaction:", softDeleteError);
+        return NextResponse.json(
+          {
+            success: false,
+            error: softDeleteError.message,
           },
           { status: 500 }
         );
+      }
+
+      // Update inventory balances after soft delete
+      if (existingTransaction.inventory_item_id) {
+        const { error: balanceError } = await supabase.rpc(
+          "update_inventory_balance",
+          {
+            inventory_item_id_param: existingTransaction.inventory_item_id,
+          }
+        );
+
+        if (balanceError) {
+          console.error("Error updating inventory balance:", balanceError);
+          // Don't fail the request, transaction is already marked as deleted
+        }
       }
 
       return NextResponse.json({

@@ -42,6 +42,12 @@ export interface InventoryTransaction {
   created_at: string;
   created_by: string;
 
+  // Soft delete fields
+  is_deleted?: boolean;
+  deleted_at?: string | null;
+  deletion_reason?: string | null;
+  deleted_by?: string | null;
+
   // Join data from related tables
   inventory_items?: InventoryItem | null;
   parties?: {

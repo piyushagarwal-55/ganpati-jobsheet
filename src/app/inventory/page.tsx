@@ -114,6 +114,7 @@ export default function InventoryPage() {
     addInventoryTransaction,
     deleteInventoryItem,
     deleteTransaction,
+    softDeleteTransaction,
     refreshData,
     getStockByPartyAndPaper,
   } = useInventory();
@@ -144,6 +145,13 @@ export default function InventoryPage() {
     name: string;
   } | null>(null);
 
+  // Soft delete dialog states
+  const [softDeleteDialog, setSoftDeleteDialog] = useState<{
+    transactionId: number;
+    transactionName: string;
+  } | null>(null);
+  const [deletionReason, setDeletionReason] = useState("");
+
   // Custom packet size for packets unit type
   const [customPacketSize, setCustomPacketSize] = useState(100);
 
@@ -161,6 +169,7 @@ export default function InventoryPage() {
     paperType: "all",
     transactionType: "all", // all, in, out, adjustment
     dateRange: "all", // all, today, week, month
+    showDeleted: "active", // all, active, deleted
   });
 
   // Dialog states
@@ -210,7 +219,7 @@ export default function InventoryPage() {
     fetchData();
   }, []);
 
-    // Update current stock when party, paper type, and GSM change
+  // Update current stock when party, paper type, and GSM change
   useEffect(() => {
     if (formData.party_id > 0 && formData.paper_type_id > 0 && formData.gsm) {
       // Find exact match including GSM
@@ -220,7 +229,7 @@ export default function InventoryPage() {
           item.paper_type_id === formData.paper_type_id &&
           item.gsm === formData.gsm
       );
-      
+
       setCurrentStock(exactStock || null);
     } else {
       setCurrentStock(null);
@@ -257,6 +266,39 @@ export default function InventoryPage() {
       });
     } finally {
       setDeleteConfirmation(null);
+    }
+  };
+
+  // Handle soft delete confirmation
+  const handleSoftDeleteConfirm = async () => {
+    if (!softDeleteDialog || !deletionReason.trim()) return;
+
+    try {
+      const result = await softDeleteTransaction(
+        softDeleteDialog.transactionId,
+        deletionReason.trim(),
+        "Admin"
+      );
+
+      if (result.success) {
+        setMessage({
+          type: "success",
+          text: "Transaction deleted successfully!",
+        });
+      } else {
+        setMessage({
+          type: "error",
+          text: result.error || "Failed to delete transaction",
+        });
+      }
+    } catch (error) {
+      setMessage({
+        type: "error",
+        text: "An error occurred while deleting transaction",
+      });
+    } finally {
+      setSoftDeleteDialog(null);
+      setDeletionReason("");
     }
   };
 
@@ -442,12 +484,27 @@ export default function InventoryPage() {
         }
       })();
 
+      const matchesDeletedFilter = (() => {
+        const isDeleted = transaction.is_deleted === true;
+        switch (transactionFilter.showDeleted) {
+          case "active":
+            return !isDeleted;
+          case "deleted":
+            return isDeleted;
+          case "all":
+            return true;
+          default:
+            return !isDeleted;
+        }
+      })();
+
       return (
         matchesSearch &&
         matchesParty &&
         matchesPaperType &&
         matchesTransactionType &&
-        matchesDateRange
+        matchesDateRange &&
+        matchesDeletedFilter
       );
     });
   }, [recentTransactions, transactionFilter]);
@@ -1424,7 +1481,7 @@ export default function InventoryPage() {
               </CardHeader>
               <CardContent className="space-y-4">
                 {/* Transaction Filters */}
-                <div className="grid grid-cols-1 md:grid-cols-5 gap-4 p-4 bg-gray-50 rounded-lg">
+                <div className="grid grid-cols-1 md:grid-cols-6 gap-4 p-4 bg-gray-50 rounded-lg">
                   <div className="space-y-2">
                     <Label htmlFor="transactionSearch">Search</Label>
                     <div className="relative">
@@ -1543,12 +1600,35 @@ export default function InventoryPage() {
                     </Select>
                   </div>
 
+                  <div className="space-y-2">
+                    <Label htmlFor="transactionShowDeleted">Status</Label>
+                    <Select
+                      value={transactionFilter.showDeleted}
+                      onValueChange={(value) =>
+                        setTransactionFilter((prev) => ({
+                          ...prev,
+                          showDeleted: value,
+                        }))
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="active">Active Only</SelectItem>
+                        <SelectItem value="deleted">Deleted Only</SelectItem>
+                        <SelectItem value="all">All Transactions</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
                   {/* Clear Filters Button */}
                   {(transactionFilter.search ||
                     transactionFilter.party !== "all" ||
                     transactionFilter.paperType !== "all" ||
                     transactionFilter.transactionType !== "all" ||
-                    transactionFilter.dateRange !== "all") && (
+                    transactionFilter.dateRange !== "all" ||
+                    transactionFilter.showDeleted !== "active") && (
                     <div className="flex items-end">
                       <Button
                         variant="ghost"
@@ -1560,6 +1640,7 @@ export default function InventoryPage() {
                             paperType: "all",
                             transactionType: "all",
                             dateRange: "all",
+                            showDeleted: "active",
                           })
                         }
                       >
@@ -1590,7 +1671,14 @@ export default function InventoryPage() {
                     </TableHeader>
                     <TableBody>
                       {filteredTransactions.map((transaction) => (
-                        <TableRow key={transaction.id}>
+                        <TableRow
+                          key={transaction.id}
+                          className={
+                            transaction.is_deleted
+                              ? "opacity-60 bg-gray-50"
+                              : ""
+                          }
+                        >
                           <TableCell>
                             <div className="text-sm">
                               {new Date(
@@ -1620,22 +1708,35 @@ export default function InventoryPage() {
                             </div>
                           </TableCell>
                           <TableCell className="text-center">
-                            {transaction.transaction_type === "in" ? (
-                              <Badge className="bg-green-600 hover:bg-green-700 text-xs">
-                                <Plus className="w-3 h-3 mr-1" />
-                                IN
-                              </Badge>
-                            ) : transaction.transaction_type === "out" ? (
-                              <Badge variant="destructive" className="text-xs">
-                                <Minus className="w-3 h-3 mr-1" />
-                                OUT
-                              </Badge>
-                            ) : (
-                              <Badge variant="secondary" className="text-xs">
-                                <Calculator className="w-3 h-3 mr-1" />
-                                ADJ
-                              </Badge>
-                            )}
+                            <div className="flex flex-col gap-1">
+                              {transaction.transaction_type === "in" ? (
+                                <Badge className="bg-green-600 hover:bg-green-700 text-xs">
+                                  <Plus className="w-3 h-3 mr-1" />
+                                  IN
+                                </Badge>
+                              ) : transaction.transaction_type === "out" ? (
+                                <Badge
+                                  variant="destructive"
+                                  className="text-xs"
+                                >
+                                  <Minus className="w-3 h-3 mr-1" />
+                                  OUT
+                                </Badge>
+                              ) : (
+                                <Badge variant="secondary" className="text-xs">
+                                  <Calculator className="w-3 h-3 mr-1" />
+                                  ADJ
+                                </Badge>
+                              )}
+                              {transaction.is_deleted && (
+                                <Badge
+                                  variant="outline"
+                                  className="text-xs text-red-600 border-red-200"
+                                >
+                                  DELETED
+                                </Badge>
+                              )}
+                            </div>
                           </TableCell>
                           <TableCell className="text-right font-mono">
                             {transaction.quantity} {transaction.unit_type}
@@ -1671,19 +1772,25 @@ export default function InventoryPage() {
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
-                                <DropdownMenuItem
-                                  onClick={() =>
-                                    setDeleteConfirmation({
-                                      type: "transaction",
-                                      id: transaction.id,
-                                      name: `${transaction.parties?.name || `Party ${transaction.party_id}`} - ${transaction.transaction_type.toUpperCase()} ${transaction.quantity} ${transaction.unit_type}`,
-                                    })
-                                  }
-                                  className="text-red-600 focus:text-red-600"
-                                >
-                                  <Trash2 className="h-4 w-4 mr-2" />
-                                  Delete Transaction
-                                </DropdownMenuItem>
+                                {!transaction.is_deleted ? (
+                                  <DropdownMenuItem
+                                    onClick={() =>
+                                      setSoftDeleteDialog({
+                                        transactionId: transaction.id,
+                                        transactionName: `${transaction.parties?.name || `Party ${transaction.party_id}`} - ${transaction.transaction_type.toUpperCase()} ${transaction.quantity} ${transaction.unit_type}`,
+                                      })
+                                    }
+                                    className="text-red-600 focus:text-red-600"
+                                  >
+                                    <Trash2 className="h-4 w-4 mr-2" />
+                                    Delete Transaction
+                                  </DropdownMenuItem>
+                                ) : (
+                                  <DropdownMenuItem disabled>
+                                    <Eye className="h-4 w-4 mr-2" />
+                                    Already Deleted
+                                  </DropdownMenuItem>
+                                )}
                               </DropdownMenuContent>
                             </DropdownMenu>
                           </TableCell>
@@ -1889,6 +1996,63 @@ export default function InventoryPage() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        {/* Soft Delete Dialog */}
+        <Dialog
+          open={softDeleteDialog !== null}
+          onOpenChange={(open) => {
+            if (!open) {
+              setSoftDeleteDialog(null);
+              setDeletionReason("");
+            }
+          }}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Delete Transaction</DialogTitle>
+              <DialogDescription>
+                You are about to delete this transaction:
+                <br />
+                <strong>{softDeleteDialog?.transactionName}</strong>
+                <br />
+                <br />
+                This transaction will be marked as deleted but preserved for
+                audit purposes. Inventory balances will be recalculated
+                automatically.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="deletionReason">Reason for deletion *</Label>
+                <Textarea
+                  id="deletionReason"
+                  placeholder="Please provide a reason for deleting this transaction..."
+                  value={deletionReason}
+                  onChange={(e) => setDeletionReason(e.target.value)}
+                  required
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setSoftDeleteDialog(null);
+                  setDeletionReason("");
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={handleSoftDeleteConfirm}
+                disabled={!deletionReason.trim() || submitLoading}
+              >
+                {submitLoading ? "Deleting..." : "Delete Transaction"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );

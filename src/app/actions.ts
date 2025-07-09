@@ -5,6 +5,10 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "../../supabase/server";
+import {
+  integrationService,
+  JobSheetSubmission,
+} from "../lib/integration-service";
 
 // ========== EXISTING AUTH ACTIONS ==========
 export const signUpAction = async (formData: FormData) => {
@@ -183,173 +187,150 @@ export const adminLogoutAction = async () => {
 // ========== JOB SHEET ACTIONS ==========
 
 // ========== JOB SHEET ACTIONS ==========
-interface JobSheetData {
-  job_date: string;
-  party_name: string;
-  party_id?: number | null; // Add this
-  description: string;
-  sheet?: string;
-  plate: string;
-  size: string;
-  sq_inch: string;
-  paper_sheet: string;
-  imp: string;
-  rate: string;
-  printing: string;
-  uv: string;
-  baking: string;
-  paper_type_id?: number | null; // Add this
-  job_type?: string | null; // Add this
-  gsm?: number | null; // Add this
-  paper_provided_by_party?: boolean; // Add this
-  paper_type?: string | null; // Add this
-  paper_size?: string | null; // Add this
-  paper_gsm?: number | null; // Add this
+interface JobSheetData extends JobSheetSubmission {
+  sheet?: string; // Legacy field support
 }
 
 export const submitJobSheetAction = async (formData: JobSheetData) => {
   try {
-    const supabase = await createClient();
-
-    // Streamlined data processing - no logging in production
-    const jobSheetData = {
-      job_date: formData.job_date || null,
-      party_id: formData.party_id || null,
-      party_name: formData.party_name || null,
-      description: formData.description || null,
-      paper_type_id: formData.paper_type_id || null,
-      plate: formData.plate ? parseInt(formData.plate) : null,
-      size: formData.size || null,
-      sq_inch: formData.sq_inch ? parseFloat(formData.sq_inch) : null,
-      paper_sheet: formData.paper_sheet ? parseInt(formData.paper_sheet) : null,
-      imp: formData.imp ? parseInt(formData.imp) : null,
-      rate: formData.rate ? parseFloat(formData.rate) : null,
-      printing: formData.printing ? parseFloat(formData.printing) : null,
-      uv: formData.uv ? parseFloat(formData.uv) : null,
-      baking: formData.baking ? parseFloat(formData.baking) : null,
-      job_type: formData.job_type || null,
-      gsm: formData.gsm || null,
-      paper_provided_by_party: formData.paper_provided_by_party || false,
-      paper_type: formData.paper_type || null,
-      paper_size: formData.paper_size || null,
-      paper_gsm: formData.paper_gsm || null,
+    // Convert the form data to the JobSheetSubmission format
+    const submissionData: JobSheetSubmission = {
+      job_date: formData.job_date,
+      party_id: formData.party_id,
+      party_name: formData.party_name,
+      description: formData.description,
+      plate: formData.plate,
+      size: formData.size,
+      sq_inch: formData.sq_inch,
+      paper_sheet: formData.paper_sheet,
+      imp: formData.imp,
+      rate: formData.rate,
+      printing: formData.printing,
+      uv: formData.uv || "0",
+      baking: formData.baking || "0",
+      job_type: formData.job_type,
+      plate_code: formData.plate_code,
+      paper_type_id: formData.paper_type_id,
+      gsm: formData.gsm,
+      paper_provided_by_party: formData.paper_provided_by_party,
+      paper_type: formData.paper_type,
+      paper_size: formData.paper_size,
+      paper_gsm: formData.paper_gsm,
+      machine_id: formData.machine_id,
+      assign_to_machine: formData.assign_to_machine,
+      paper_source: formData.paper_source,
+      inventory_item_id: formData.inventory_item_id,
+      used_from_inventory: formData.used_from_inventory,
     };
 
-    // Quick validation - only required fields
-    const requiredFields = [
-      "job_date",
-      "party_name",
-      "description",
-      "plate",
-      "size",
-      "sq_inch",
-      "paper_sheet",
-      "imp",
-      "rate",
-      "printing",
-    ];
-    const missingFields = requiredFields.filter(
-      (field) =>
-        !jobSheetData[field as keyof typeof jobSheetData] &&
-        jobSheetData[field as keyof typeof jobSheetData] !== 0
-    );
+    // Use the integration service for complete workflow management
+    const result = await integrationService.submitJobSheetWithIntegrations(submissionData);
 
-    if (missingFields.length > 0) {
+    if (!result.success) {
       return {
         success: false,
-        error: `Missing required fields: ${missingFields.join(", ")}`,
+        error: result.error || "Failed to submit job sheet"
       };
-    }
-
-    const totalJobCost =
-      (jobSheetData.printing || 0) +
-      (jobSheetData.uv || 0) +
-      (jobSheetData.baking || 0);
-
-    // Try optimized single RPC call first
-    if (jobSheetData.party_id && totalJobCost > 0) {
-      const { data: result, error: rpcError } = await supabase.rpc(
-        "create_job_sheet_with_party_update",
-        {
-          job_data: jobSheetData,
-          total_cost: totalJobCost,
-        }
-      );
-
-      if (!rpcError && result) {
-        return {
-          success: true,
-          data: result,
-          message: "Job sheet created successfully and party balance updated!",
-        };
-      }
-    }
-
-    // Fallback to original method if RPC fails or not available
-    const { data: insertedJobSheet, error: insertError } = await supabase
-      .from("job_sheets")
-      .insert([jobSheetData])
-      .select()
-      .single();
-
-    if (insertError) {
-      return {
-        success: false,
-        error: `Database error: ${insertError.message}`,
-      };
-    }
-
-    // Update party balance if needed
-    if (jobSheetData.party_id && totalJobCost > 0) {
-      try {
-        const { data: partyData, error: partyError } = await supabase
-          .from("parties")
-          .select("balance")
-          .eq("id", jobSheetData.party_id)
-          .single();
-
-        if (!partyError && partyData) {
-          const newBalance = (partyData.balance || 0) - totalJobCost;
-
-          // Use parallel operations for better performance
-          await Promise.all([
-            supabase
-              .from("parties")
-              .update({
-                balance: newBalance,
-                updated_at: new Date().toISOString(),
-              })
-              .eq("id", jobSheetData.party_id),
-            supabase.from("party_transactions").insert([
-              {
-                party_id: jobSheetData.party_id,
-                type: "order",
-                amount: totalJobCost,
-                description: `Job Sheet #${insertedJobSheet.id} - ${jobSheetData.description}`,
-                balance_after: newBalance,
-              },
-            ]),
-          ]);
-        }
-      } catch (balanceError) {
-        // Don't fail job creation if balance update fails
-      }
     }
 
     return {
       success: true,
-      data: insertedJobSheet,
-      message: jobSheetData.party_id
-        ? "Job sheet created successfully and party balance updated!"
-        : "Job sheet created successfully!",
+      data: result.data,
+      message: "Job sheet created successfully with full integration!"
     };
+
   } catch (error: any) {
+    console.error("Job sheet submission error:", error);
     return {
       success: false,
       error: `Server error: ${error.message || "Unknown error occurred"}`,
     };
   }
 };
+
+// Helper function to handle inventory deduction
+async function handleInventoryDeduction(
+  supabase: any,
+  jobSheetData: any,
+  insertedJobSheet: any
+) {
+  const usedQuantity = parseInt(jobSheetData.paper_sheet) || 0;
+
+  if (usedQuantity > 0) {
+    try {
+      console.log(
+        `Deducting ${usedQuantity} sheets from inventory item ${jobSheetData.inventory_item_id}`
+      );
+
+      // Get current inventory item
+      const { data: inventoryItem, error: inventoryError } = await supabase
+        .from("inventory_items")
+        .select("*")
+        .eq("id", jobSheetData.inventory_item_id)
+        .single();
+
+      if (!inventoryError && inventoryItem) {
+        const newCurrentQuantity =
+          inventoryItem.current_quantity - usedQuantity;
+        const newAvailableQuantity =
+          inventoryItem.available_quantity - usedQuantity;
+
+        // Update inventory item quantities
+        const { error: inventoryUpdateError } = await supabase
+          .from("inventory_items")
+          .update({
+            current_quantity: newCurrentQuantity,
+            available_quantity: newAvailableQuantity,
+            last_updated: new Date().toISOString(),
+          })
+          .eq("id", jobSheetData.inventory_item_id);
+
+        if (inventoryUpdateError) {
+          console.error("Error updating inventory:", inventoryUpdateError);
+        } else {
+          console.log(
+            `Inventory updated successfully. Used: ${usedQuantity}, Remaining: ${newCurrentQuantity}`
+          );
+        }
+
+        // Create inventory transaction record
+        try {
+          const inventoryTransactionData = {
+            inventory_item_id: jobSheetData.inventory_item_id,
+            party_id: inventoryItem.party_id,
+            paper_type_id: inventoryItem.paper_type_id,
+            transaction_type: "out",
+            quantity: usedQuantity,
+            unit_type: "sheets",
+            unit_size: 1,
+            total_sheets: -usedQuantity, // Negative for outbound transactions
+            description: `Used for Job Sheet #${insertedJobSheet.id}: ${jobSheetData.description || "Job order"}`,
+            reference_id: insertedJobSheet.id,
+            balance_after: newCurrentQuantity,
+            created_by: "Job Sheet",
+            gsm: inventoryItem.gsm,
+          };
+
+          await supabase
+            .from("inventory_transactions")
+            .insert([inventoryTransactionData]);
+          console.log("Inventory transaction created successfully");
+        } catch (inventoryTransactionError) {
+          console.warn(
+            "Could not create inventory transaction:",
+            inventoryTransactionError
+          );
+          // Don't fail the job creation if transaction logging fails
+        }
+      } else {
+        console.error("Could not fetch inventory item:", inventoryError);
+      }
+    } catch (inventoryErr) {
+      console.error("Error in inventory update:", inventoryErr);
+      // Don't fail the job sheet creation if inventory update fails
+    }
+  }
+}
 
 export const updateJobSheetAction = async (
   jobSheetId: number,
