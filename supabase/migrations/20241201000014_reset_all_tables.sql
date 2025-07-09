@@ -1,68 +1,109 @@
 -- Reset all database tables to empty state
 -- This migration truncates all data while preserving table structure
+-- Only truncates tables that actually exist
 
 -- Disable foreign key checks temporarily
 SET session_replication_role = replica;
+
+-- Function to safely truncate table if it exists
+CREATE OR REPLACE FUNCTION safe_truncate_table(tbl_name TEXT)
+RETURNS void AS $$
+BEGIN
+    IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = tbl_name AND table_schema = 'public') THEN
+        EXECUTE format('TRUNCATE TABLE %I RESTART IDENTITY CASCADE', tbl_name);
+        RAISE NOTICE 'Truncated table: %', tbl_name;
+    ELSE
+        RAISE NOTICE 'Table % does not exist, skipping', tbl_name;
+    END IF;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Function to safely reset sequence if it exists
+CREATE OR REPLACE FUNCTION safe_reset_sequence(tbl_name TEXT, col_name TEXT)
+RETURNS void AS $$
+BEGIN
+    IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = tbl_name AND table_schema = 'public') THEN
+        IF EXISTS (SELECT FROM information_schema.columns WHERE table_name = tbl_name AND column_name = col_name AND table_schema = 'public') THEN
+            EXECUTE format('SELECT setval(pg_get_serial_sequence(%L, %L), 1, false)', tbl_name, col_name);
+            RAISE NOTICE 'Reset sequence for: %.%', tbl_name, col_name;
+        END IF;
+    END IF;
+END;
+$$ LANGUAGE plpgsql;
 
 -- Truncate all tables in dependency order (children first, then parents)
 -- This ensures foreign key constraints are not violated
 
 -- Clear workflow and tracking tables first
-TRUNCATE TABLE workflow_status RESTART IDENTITY CASCADE;
+SELECT safe_truncate_table('workflow_status');
 
 -- Clear inventory related tables
-TRUNCATE TABLE inventory_transactions RESTART IDENTITY CASCADE;
-TRUNCATE TABLE inventory_items RESTART IDENTITY CASCADE;
+SELECT safe_truncate_table('inventory_transactions');
+SELECT safe_truncate_table('inventory_items');
 
 -- Clear party related tables (orders before transactions, transactions before parties)
-TRUNCATE TABLE party_orders RESTART IDENTITY CASCADE;
-TRUNCATE TABLE party_transactions RESTART IDENTITY CASCADE;
+SELECT safe_truncate_table('party_orders');
+SELECT safe_truncate_table('party_transactions');
 
 -- Clear job sheets (depends on parties, machines, inventory)
-TRUNCATE TABLE job_sheets RESTART IDENTITY CASCADE;
+SELECT safe_truncate_table('job_sheets');
 
 -- Clear machines table
-TRUNCATE TABLE machines RESTART IDENTITY CASCADE;
+SELECT safe_truncate_table('machines');
 
 -- Clear parties table (after all dependent tables)
-TRUNCATE TABLE parties RESTART IDENTITY CASCADE;
+SELECT safe_truncate_table('parties');
 
 -- Clear paper types (after inventory tables)
-TRUNCATE TABLE paper_types RESTART IDENTITY CASCADE;
+SELECT safe_truncate_table('paper_types');
 
--- Clear users table (no dependencies)
-TRUNCATE TABLE users RESTART IDENTITY CASCADE;
+-- Clear users table (no dependencies) - only if it exists
+SELECT safe_truncate_table('users');
 
 -- Re-enable foreign key checks
 SET session_replication_role = DEFAULT;
 
--- Reset sequences to start from 1
-SELECT setval(pg_get_serial_sequence('workflow_status', 'id'), 1, false);
-SELECT setval(pg_get_serial_sequence('inventory_transactions', 'id'), 1, false);
-SELECT setval(pg_get_serial_sequence('inventory_items', 'id'), 1, false);
-SELECT setval(pg_get_serial_sequence('party_orders', 'id'), 1, false);
-SELECT setval(pg_get_serial_sequence('party_transactions', 'id'), 1, false);
-SELECT setval(pg_get_serial_sequence('job_sheets', 'id'), 1, false);
-SELECT setval(pg_get_serial_sequence('machines', 'id'), 1, false);
-SELECT setval(pg_get_serial_sequence('parties', 'id'), 1, false);
-SELECT setval(pg_get_serial_sequence('paper_types', 'id'), 1, false);
+-- Reset sequences to start from 1 (only for existing tables)
+SELECT safe_reset_sequence('workflow_status', 'id');
+SELECT safe_reset_sequence('inventory_transactions', 'id');
+SELECT safe_reset_sequence('inventory_items', 'id');
+SELECT safe_reset_sequence('party_orders', 'id');
+SELECT safe_reset_sequence('party_transactions', 'id');
+SELECT safe_reset_sequence('job_sheets', 'id');
+SELECT safe_reset_sequence('machines', 'id');
+SELECT safe_reset_sequence('parties', 'id');
+SELECT safe_reset_sequence('paper_types', 'id');
 
--- Add some essential paper types back (required for system to function)
-INSERT INTO public.paper_types (name, description) VALUES 
-('ART PAPER', 'High-quality coated paper for printing'),
-('MATTE PAPER', 'Non-glossy finish paper'),
-('GLOSSY PAPER', 'High-gloss finish paper'),
-('CARDSTOCK', 'Heavy weight paper for cards'),
-('OFFSET PAPER', 'Standard offset printing paper'),
-('BOND PAPER', 'High-quality writing paper'),
-('COPIER PAPER', 'Standard copy paper'),
-('FRC', 'Folding box board'),
-('DUPLEX', 'Two-sided paper'),
-('SBS', 'Solid bleached sulfate board');
+-- Add some essential paper types back (only if paper_types table exists)
+DO $$
+BEGIN
+    IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'paper_types' AND table_schema = 'public') THEN
+        INSERT INTO public.paper_types (name, description) VALUES 
+        ('ART PAPER', 'High-quality coated paper for printing'),
+        ('MATTE PAPER', 'Non-glossy finish paper'),
+        ('GLOSSY PAPER', 'High-gloss finish paper'),
+        ('CARDSTOCK', 'Heavy weight paper for cards'),
+        ('OFFSET PAPER', 'Standard offset printing paper'),
+        ('BOND PAPER', 'High-quality writing paper'),
+        ('COPIER PAPER', 'Standard copy paper'),
+        ('FRC', 'Folding box board'),
+        ('DUPLEX', 'Two-sided paper'),
+        ('SBS', 'Solid bleached sulfate board')
+        ON CONFLICT (name) DO NOTHING;
+        
+        RAISE NOTICE 'Essential paper types restored';
+    ELSE
+        RAISE NOTICE 'Paper types table does not exist, skipping restoration';
+    END IF;
+END $$;
+
+-- Clean up helper functions
+DROP FUNCTION IF EXISTS safe_truncate_table(TEXT);
+DROP FUNCTION IF EXISTS safe_reset_sequence(TEXT, TEXT);
 
 -- Success message
 DO $$
 BEGIN
-    RAISE NOTICE 'All tables have been reset successfully!';
-    RAISE NOTICE 'All data cleared, sequences reset, and essential paper types restored.';
+    RAISE NOTICE 'Database reset completed successfully!';
+    RAISE NOTICE 'All existing tables cleared, sequences reset, and essential data restored.';
 END $$; 
