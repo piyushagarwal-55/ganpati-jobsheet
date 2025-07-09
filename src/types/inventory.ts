@@ -4,6 +4,7 @@ export interface InventoryItem {
   party_id: number;
   paper_type_id?: number | null;
   paper_type_name: string;
+  gsm?: number | null; // Separate GSM field
   current_quantity: number;
   reserved_quantity: number;
   available_quantity: number;
@@ -29,6 +30,7 @@ export interface InventoryTransaction {
   inventory_item_id: number;
   party_id: number;
   paper_type_id?: number | null;
+  gsm?: number | null; // Separate GSM field
   transaction_type: "in" | "out" | "adjustment" | "reserved" | "released";
   quantity: number;
   unit_type: "sheets" | "packets" | "gross" | "ream";
@@ -39,6 +41,12 @@ export interface InventoryTransaction {
   balance_after: number;
   created_at: string;
   created_by: string;
+
+  // Soft delete fields
+  is_deleted?: boolean;
+  deleted_at?: string | null;
+  deletion_reason?: string | null;
+  deleted_by?: string | null;
 
   // Join data from related tables
   inventory_items?: InventoryItem | null;
@@ -56,6 +64,7 @@ export interface InventoryTransaction {
 export interface InventoryFormData {
   party_id: number;
   paper_type_id: number;
+  gsm?: number | null; // Separate GSM field like in job sheet form
   transaction_type: "in" | "out" | "adjustment";
   quantity: number;
   unit_type: "sheets" | "packets" | "gross" | "ream";
@@ -67,7 +76,9 @@ export interface UnitOption {
   value: string;
   label: string;
   size: number;
+  icon: string;
   description: string;
+  details: string;
 }
 
 export const UNIT_OPTIONS: UnitOption[] = [
@@ -75,25 +86,33 @@ export const UNIT_OPTIONS: UnitOption[] = [
     value: "sheets",
     label: "Sheets",
     size: 1,
-    description: "Individual sheets (1 sheet = 1 unit)",
+    icon: "📄",
+    description: "Individual paper sheets",
+    details: "Count each sheet individually (1 sheet = 1 unit)",
   },
   {
     value: "packets",
     label: "Packets",
     size: 100, // Default, user can customize between 100-200
-    description: "Packets (100-200 sheets per packet - customizable)",
+    icon: "📦",
+    description: "Bundled paper packets",
+    details: "Customizable packet size (100-200 sheets per packet)",
   },
   {
     value: "gross",
     label: "Gross",
     size: 144,
-    description: "Gross (144 sheets per gross - standard)",
+    icon: "📚",
+    description: "Standard gross units",
+    details: "Fixed size: 144 sheets per gross (12 dozen)",
   },
   {
     value: "ream",
     label: "Ream",
     size: 500,
-    description: "Ream (500 sheets per ream - standard)",
+    icon: "📋",
+    description: "Standard ream units",
+    details: "Fixed size: 500 sheets per ream (industry standard)",
   },
 ];
 

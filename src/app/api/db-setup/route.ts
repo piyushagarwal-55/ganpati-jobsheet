@@ -21,6 +21,27 @@ export async function POST() {
       CREATE INDEX IF NOT EXISTS idx_job_sheets_deleted_at ON job_sheets(deleted_at);
     `;
 
+    // Step 1b: Add inventory tracking columns to job_sheets table
+    const addInventoryColumns = `
+      -- Add inventory tracking columns to job_sheets table
+      ALTER TABLE job_sheets 
+      ADD COLUMN IF NOT EXISTS inventory_item_id INTEGER,
+      ADD COLUMN IF NOT EXISTS used_from_inventory BOOLEAN DEFAULT FALSE,
+      ADD COLUMN IF NOT EXISTS paper_source TEXT CHECK (paper_source IN ('inventory', 'self-provided')) DEFAULT 'self-provided';
+
+      -- Create index for better performance when querying by inventory item
+      CREATE INDEX IF NOT EXISTS idx_job_sheets_inventory_item_id ON job_sheets(inventory_item_id);
+
+      -- Add foreign key constraint if inventory_items table exists
+      DO $$ 
+      BEGIN
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'inventory_items') THEN
+          ALTER TABLE job_sheets ADD CONSTRAINT IF NOT EXISTS fk_job_sheets_inventory_item 
+          FOREIGN KEY (inventory_item_id) REFERENCES inventory_items(id);
+        END IF;
+      END $$;
+    `;
+
     // Step 2: Add soft delete columns to party_transactions table
     const addTransactionSoftDeleteColumns = `
       -- Add soft delete columns to party_transactions table
@@ -63,6 +84,17 @@ export async function POST() {
       console.log("Soft delete columns addition failed:", softDeleteError);
     } else {
       console.log("Soft delete columns added successfully");
+    }
+
+    // Execute the inventory columns addition
+    const { error: inventoryColumnsError } = await supabase.rpc("exec_sql", {
+      sql: addInventoryColumns,
+    });
+
+    if (inventoryColumnsError) {
+      console.log("Inventory columns addition failed:", inventoryColumnsError);
+    } else {
+      console.log("Inventory columns added successfully");
     }
 
     // Execute the transaction soft delete columns addition

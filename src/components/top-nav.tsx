@@ -24,6 +24,7 @@ import {
   Settings,
   LogOut,
   Package,
+  Cog,
 } from "lucide-react";
 
 const navigationItems = [
@@ -46,6 +47,11 @@ const navigationItems = [
     title: "Inventory",
     href: "/inventory",
     icon: Package,
+  },
+  {
+    title: "Machines",
+    href: "/machines",
+    icon: Cog,
   },
   {
     title: "Reports",

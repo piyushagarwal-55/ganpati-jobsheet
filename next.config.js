@@ -53,8 +53,18 @@ const nextConfig = {
           },
           {
             key: "Content-Security-Policy",
-            value:
-              "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline' https://api.tempolabs.ai; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; connect-src 'self' https://*.supabase.co https://api.tempolabs.ai; frame-ancestors 'none';",
+            value: `
+              default-src 'self';
+              script-src 'self' 'unsafe-inline' ${process.env.NODE_ENV === "development" ? "'unsafe-eval'" : ""} https://api.tempolabs.ai;
+              style-src 'self' 'unsafe-inline';
+              img-src 'self' data: blob: https:;
+              font-src 'self';
+              connect-src 'self' https://*.supabase.co https://api.tempolabs.ai;
+              frame-src 'self';
+              frame-ancestors 'none';
+            `
+              .replace(/\s{2,}/g, " ")
+              .trim(),
           },
         ],
       },

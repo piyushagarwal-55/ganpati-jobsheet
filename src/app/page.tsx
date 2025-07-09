@@ -185,7 +185,7 @@ export default function DashboardPage() {
       for (let attempt = 0; attempt <= retries; attempt++) {
         try {
           const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 3000);
+          const timeoutId = setTimeout(() => controller.abort(), 8000); // Increased from 3000 to 8000
 
           const response = await fetch(url, {
             signal: controller.signal,
@@ -203,6 +203,17 @@ export default function DashboardPage() {
 
           return await response.json();
         } catch (error) {
+          if (error instanceof Error && error.name === "AbortError") {
+            console.warn(
+              `Request to ${url} timed out on attempt ${attempt + 1}`
+            );
+          } else {
+            console.warn(
+              `Request to ${url} failed on attempt ${attempt + 1}:`,
+              error
+            );
+          }
+
           if (attempt === retries) {
             throw error;
           }

@@ -15,6 +15,11 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { submitJobSheetAction } from "@/app/actions";
+import { useInventory } from "@/hooks/useInventory";
+import { InventoryItem } from "@/types/inventory";
+import { useMachines } from "@/hooks/useMachines";
+import { Machine } from "@/types/machine";
+import { Party, PaperType } from "@/types/database";
 import {
   FileText,
   CheckCircle,
@@ -26,6 +31,9 @@ import {
   Send,
   UserPlus,
   Plus,
+  Warehouse,
+  ExternalLink,
+  Cog,
 } from "lucide-react";
 import Loading from "@/components/ui/loading";
 import { PageHeader } from "@/components/ui/page-header";
@@ -60,18 +68,9 @@ interface JobSheetData {
   paper_size?: string | null;
   paper_gsm?: number | null;
   plate_code?: string;
-}
-
-interface Party {
-  id: number;
-  name: string;
-  balance: number;
-}
-
-interface PaperType {
-  id: number;
-  name: string;
-  gsm: number;
+  // Machine assignment fields
+  machine_id?: number | null;
+  assign_to_machine?: boolean;
 }
 
 const initialFormData: JobSheetData = {
@@ -152,6 +151,47 @@ export default function JobSheetForm() {
   const [parties, setParties] = useState<Party[]>([]);
   const [paperTypes, setPaperTypes] = useState<PaperType[]>([]);
   const [selectedParty, setSelectedParty] = useState<Party | null>(null);
+
+  // Loading and error states
+  const [loadingStates, setLoadingStates] = useState({
+    parties: false,
+    paperTypes: false,
+    machines: false,
+    initialLoad: true,
+  });
+
+  const [errorStates, setErrorStates] = useState({
+    parties: null as string | null,
+    paperTypes: null as string | null,
+    machines: null as string | null,
+  });
+
+  // Inventory system integration
+  const {
+    inventoryItems,
+    loading: inventoryLoading,
+    error: inventoryError,
+    refreshData: refreshInventory,
+  } = useInventory();
+
+  // Machine system integration
+  const {
+    machines,
+    loading: machinesLoading,
+    error: machinesError,
+    assignJob,
+    refreshMachines,
+  } = useMachines();
+
+  // Inventory-related states
+  const [availableInventoryItems, setAvailableInventoryItems] = useState<
+    InventoryItem[]
+  >([]);
+  const [selectedInventoryItem, setSelectedInventoryItem] =
+    useState<InventoryItem | null>(null);
+  const [paperSource, setPaperSource] = useState<"inventory" | "self-provided">(
+    "inventory"
+  );
   const [paperProvidedByParty, setPaperProvidedByParty] =
     useState<boolean>(false);
   const [paperType, setPaperType] = useState<string>("");
@@ -169,6 +209,11 @@ export default function JobSheetForm() {
   const [newPartyName, setNewPartyName] = useState("");
   const [newPartyBalance, setNewPartyBalance] = useState("");
   const [newPaperType, setNewPaperType] = useState({ name: "", gsm: "" });
+
+  // Machine assignment states
+  const [selectedMachine, setSelectedMachine] = useState<Machine | null>(null);
+  const [assignToMachine, setAssignToMachine] = useState<boolean>(false);
+  const [availableMachines, setAvailableMachines] = useState<Machine[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   // Storage for preserving user input
@@ -183,11 +228,41 @@ export default function JobSheetForm() {
   useEffect(() => {
     const loadInitialData = async () => {
       setIsLoading(true);
-      await Promise.all([fetchParties(), fetchPaperTypes()]);
-      setIsLoading(false);
+      setLoadingStates((prev) => ({ ...prev, initialLoad: true }));
+
+      try {
+        // Load essential data first
+        const essentialPromises = [
+          fetchParties().catch((error) => {
+            setErrorStates((prev) => ({
+              ...prev,
+              parties: "Failed to load parties",
+            }));
+            console.warn("Failed to load parties, continuing without them");
+            return Promise.resolve();
+          }),
+          fetchPaperTypes().catch((error) => {
+            setErrorStates((prev) => ({
+              ...prev,
+              paperTypes: "Failed to load paper types",
+            }));
+            console.warn("Failed to load paper types, continuing without them");
+            return Promise.resolve();
+          }),
+        ];
+
+        await Promise.allSettled(essentialPromises);
+
+        // Machines will be loaded separately once useMachines hook is ready
+      } catch (error) {
+        console.error("Error loading essential data:", error);
+      } finally {
+        setIsLoading(false);
+        setLoadingStates((prev) => ({ ...prev, initialLoad: false }));
+      }
     };
     loadInitialData();
-  }, []);
+  }, []); // Removed refreshMachines dependency to prevent infinite re-renders
 
   // Auto-calculate impressions when paper_sheet or job_type changes
   useEffect(() => {
@@ -195,6 +270,55 @@ export default function JobSheetForm() {
       calculateAndSetImpressions();
     }
   }, [formData.paper_sheet, formData.job_type]);
+
+  // Filter available inventory items based on selected party
+  useEffect(() => {
+    if (selectedParty && inventoryItems) {
+      const partyInventory = inventoryItems.filter(
+        (item) =>
+          item.party_id === selectedParty.id && item.current_quantity > 0
+      );
+      setAvailableInventoryItems(partyInventory);
+    } else {
+      setAvailableInventoryItems([]);
+    }
+  }, [selectedParty, inventoryItems]);
+
+  // Reset inventory selection when party changes
+  useEffect(() => {
+    if (selectedParty) {
+      setSelectedInventoryItem(null);
+      setPaperSource("inventory");
+    }
+  }, [selectedParty]);
+
+  // Handle machine loading state and errors
+  useEffect(() => {
+    if (machinesLoading) {
+      setLoadingStates((prev) => ({ ...prev, machines: true }));
+    } else {
+      setLoadingStates((prev) => ({ ...prev, machines: false }));
+
+      if (machinesError) {
+        setErrorStates((prev) => ({
+          ...prev,
+          machines: "Failed to load machines - you can still create job sheets",
+        }));
+      } else {
+        setErrorStates((prev) => ({ ...prev, machines: null }));
+      }
+    }
+  }, [machinesLoading, machinesError]);
+
+  // Filter available machines that are active and available
+  useEffect(() => {
+    if (machines) {
+      const activeMachines = machines.filter(
+        (machine) => machine.status === "active" && machine.is_available
+      );
+      setAvailableMachines(activeMachines);
+    }
+  }, [machines]);
 
   const calculateAndSetImpressions = () => {
     const paperSheets = parseFloat(formData.paper_sheet) || 0;
@@ -212,32 +336,105 @@ export default function JobSheetForm() {
   };
 
   const fetchParties = async () => {
+    setLoadingStates((prev) => ({ ...prev, parties: true }));
+    setErrorStates((prev) => ({ ...prev, parties: null }));
+
     try {
-      const response = await fetch("/api/parties");
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+      const response = await fetch("/api/parties", {
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
       if (response.ok) {
         const result = await response.json();
         const partiesData = Array.isArray(result)
           ? result
           : result.data || result;
         setParties(partiesData || []);
+        setErrorStates((prev) => ({ ...prev, parties: null }));
+      } else {
+        console.warn(`Failed to fetch parties: ${response.status}`);
+        setParties([]);
+        setErrorStates((prev) => ({
+          ...prev,
+          parties: `HTTP ${response.status}: Failed to load parties`,
+        }));
       }
     } catch (error) {
       console.error("Error fetching parties:", error);
+      if (error instanceof Error && error.name === "AbortError") {
+        console.warn("Parties fetch timed out");
+        setErrorStates((prev) => ({
+          ...prev,
+          parties: "Request timed out - please check your connection",
+        }));
+      } else {
+        setErrorStates((prev) => ({
+          ...prev,
+          parties: "Failed to load parties",
+        }));
+      }
+      setParties([]);
+    } finally {
+      setLoadingStates((prev) => ({ ...prev, parties: false }));
     }
   };
 
   const fetchPaperTypes = async () => {
+    setLoadingStates((prev) => ({ ...prev, paperTypes: true }));
+    setErrorStates((prev) => ({ ...prev, paperTypes: null }));
+
     try {
-      const response = await fetch("/api/paper-types");
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+      const response = await fetch("/api/paper-types", {
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
       if (response.ok) {
         const result = await response.json();
         if (result.success && result.data) {
           setPaperTypes(result.data || []);
+          setErrorStates((prev) => ({ ...prev, paperTypes: null }));
+        } else {
+          setPaperTypes([]);
+          setErrorStates((prev) => ({
+            ...prev,
+            paperTypes: "No paper types data available",
+          }));
         }
+      } else {
+        console.warn(`Failed to fetch paper types: ${response.status}`);
+        setPaperTypes([]);
+        setErrorStates((prev) => ({
+          ...prev,
+          paperTypes: `HTTP ${response.status}: Failed to load paper types`,
+        }));
       }
     } catch (error) {
       console.error("Error fetching paper types:", error);
+      if (error instanceof Error && error.name === "AbortError") {
+        console.warn("Paper types fetch timed out");
+        setErrorStates((prev) => ({
+          ...prev,
+          paperTypes: "Request timed out - please check your connection",
+        }));
+      } else {
+        setErrorStates((prev) => ({
+          ...prev,
+          paperTypes: "Failed to load paper types",
+        }));
+      }
       setPaperTypes([]);
+    } finally {
+      setLoadingStates((prev) => ({ ...prev, paperTypes: false }));
     }
   };
 
@@ -349,6 +546,22 @@ export default function JobSheetForm() {
     return [...paperSizes, ...customSizes];
   };
 
+  // Helper function to check inventory availability
+  const getInventoryForPaperType = (paperTypeId: number, gsm?: number) => {
+    return availableInventoryItems.filter(
+      (item) => item.paper_type_id === paperTypeId && (!gsm || item.gsm === gsm)
+    );
+  };
+
+  // Helper function to get total available stock for a paper type
+  const getTotalAvailableStock = (paperTypeId: number, gsm?: number) => {
+    const matchingItems = getInventoryForPaperType(paperTypeId, gsm);
+    return matchingItems.reduce(
+      (total, item) => total + item.available_quantity,
+      0
+    );
+  };
+
   const calculatePrintingCost = () => {
     const rate = parseFloat(formData.rate) || 0;
     const imp = parseFloat(formData.imp) || 0;
@@ -449,7 +662,11 @@ export default function JobSheetForm() {
 
     const printingCost = calculatePrintingCost();
 
-    const submissionData: JobSheetData = {
+    const submissionData: JobSheetData & {
+      paper_source?: "inventory" | "self-provided";
+      inventory_item_id?: number | null;
+      used_from_inventory?: boolean;
+    } = {
       ...formData,
       printing: printingCost,
       party_id: selectedParty?.id || null,
@@ -462,6 +679,18 @@ export default function JobSheetForm() {
       paper_type: paperProvidedByParty ? paperType : null,
       paper_size: paperProvidedByParty ? paperSize : null,
       paper_gsm: paperProvidedByParty && paperGSM ? parseInt(paperGSM) : null,
+      // Machine assignment fields
+      machine_id: assignToMachine ? selectedMachine?.id || null : null,
+      assign_to_machine: assignToMachine,
+      // Inventory-related fields
+      paper_source: selectedParty ? paperSource : "self-provided",
+      inventory_item_id: selectedInventoryItem?.id || null,
+      used_from_inventory:
+        selectedParty &&
+        paperSource === "inventory" &&
+        selectedInventoryItem !== null
+          ? true
+          : undefined,
     };
 
     try {
@@ -483,8 +712,21 @@ export default function JobSheetForm() {
         setCurrentStep(1);
         setSelectedParty(null);
 
-        // Refresh parties to get updated balances
-        await fetchParties();
+        // Reset inventory-related states
+        setSelectedInventoryItem(null);
+        setPaperSource("inventory");
+        setAvailableInventoryItems([]);
+
+        // Reset machine-related states
+        setSelectedMachine(null);
+        setAssignToMachine(false);
+
+        // Refresh data to get updated balances, inventory, and machines
+        await Promise.all([
+          fetchParties(),
+          refreshInventory(),
+          refreshMachines(),
+        ]);
       } else {
         setSubmitStatus({
           type: "error",
@@ -507,17 +749,24 @@ export default function JobSheetForm() {
     switch (step) {
       case 1:
         return formData.job_date && formData.party_name && formData.description;
-      case 2:
-        return (
+      case 2: {
+        const basicValidation =
           formData.plate &&
           formData.size &&
           formData.sq_inch &&
           formData.paper_sheet &&
           formData.imp &&
-          formData.paper_type_id &&
-          formData.gsm &&
-          formData.job_type
-        );
+          formData.job_type;
+
+        // Paper type validation depends on the source
+        if (selectedParty && paperSource === "inventory") {
+          // For inventory source, need selected inventory item
+          return basicValidation && selectedInventoryItem !== null;
+        } else {
+          // For self-provided or no party, need traditional paper type and GSM
+          return basicValidation && formData.paper_type_id && formData.gsm;
+        }
+      }
       case 3:
         return formData.rate;
       case 4:
@@ -591,7 +840,9 @@ export default function JobSheetForm() {
           />
         </div>
         <div className="space-y-2">
-          <Label className="text-sm font-medium">Party Name</Label>
+          <Label htmlFor="party_select" className="text-sm font-medium">
+            Party Name
+          </Label>
           <div className="flex gap-2">
             <Select
               value={selectedParty?.id.toString() || ""}
@@ -608,7 +859,7 @@ export default function JobSheetForm() {
                 }
               }}
             >
-              <SelectTrigger className="flex-1">
+              <SelectTrigger id="party_select" className="flex-1">
                 <SelectValue placeholder="Select a party" />
               </SelectTrigger>
               <SelectContent>
@@ -665,12 +916,12 @@ export default function JobSheetForm() {
     <div className="space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="space-y-2">
-          <Label>Job Type</Label>
+          <Label htmlFor="job_type">Job Type</Label>
           <Select
             value={formData.job_type || ""}
             onValueChange={(value) => updateFormData("job_type", value)}
           >
-            <SelectTrigger>
+            <SelectTrigger id="job_type">
               <SelectValue placeholder="Select job type" />
             </SelectTrigger>
             <SelectContent>
@@ -691,9 +942,9 @@ export default function JobSheetForm() {
           />
         </div>
         <div className="space-y-2">
-          <Label>Size</Label>
+          <Label htmlFor="size">Size</Label>
           <Select value={formData.size || ""} onValueChange={handleSizeChange}>
-            <SelectTrigger>
+            <SelectTrigger id="size">
               <SelectValue placeholder="Select paper size" />
             </SelectTrigger>
             <SelectContent>
@@ -769,58 +1020,372 @@ export default function JobSheetForm() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="space-y-2">
-          <Label>Paper Type</Label>
-          <Select
-            value={formData.paper_type_id?.toString() || ""}
-            onValueChange={(value) => {
-              if (value === "new") {
-                setShowNewPaperTypeDialog(true);
-              } else {
-                updateFormData("paper_type_id", parseInt(value));
-              }
-            }}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Select paper type" />
-            </SelectTrigger>
-            <SelectContent>
-              {paperTypes.map((type) => (
-                <SelectItem key={type.id} value={type.id.toString()}>
-                  {type.name}
-                </SelectItem>
-              ))}
-              <SelectItem value="new">
-                <div className="flex items-center gap-2 text-blue-600">
-                  <Plus className="w-4 h-4" />
-                  Add New Paper Type
-                </div>
-              </SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="space-y-2">
-          <Label>GSM</Label>
-          <Select
-            value={formData.gsm?.toString() || ""}
-            onValueChange={(value) => updateFormData("gsm", parseInt(value))}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Select GSM" />
-            </SelectTrigger>
-            <SelectContent>
-              {paperGSMs.map((gsm) => (
-                <SelectItem key={gsm} value={gsm.toString()}>
-                  {gsm} GSM
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
+      {/* Paper Source Selection */}
+      {selectedParty && (
+        <Card className="border-blue-200 bg-blue-50">
+          <CardHeader>
+            <CardTitle className="text-blue-900 flex items-center gap-2">
+              <Warehouse className="w-5 h-5" />
+              Paper Source
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex gap-4">
+              <div className="flex items-center space-x-2">
+                <input
+                  type="radio"
+                  id="inventory-paper"
+                  name="paper-source"
+                  value="inventory"
+                  checked={paperSource === "inventory"}
+                  onChange={(e) =>
+                    setPaperSource(
+                      e.target.value as "inventory" | "self-provided"
+                    )
+                  }
+                  className="rounded"
+                />
+                <Label htmlFor="inventory-paper">
+                  Use from Inventory ({availableInventoryItems.length} types
+                  available)
+                </Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <input
+                  type="radio"
+                  id="self-provided-paper"
+                  name="paper-source"
+                  value="self-provided"
+                  checked={paperSource === "self-provided"}
+                  onChange={(e) =>
+                    setPaperSource(
+                      e.target.value as "inventory" | "self-provided"
+                    )
+                  }
+                  className="rounded"
+                />
+                <Label htmlFor="self-provided-paper">Self-Provided Paper</Label>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
-      {/* Paper provided by party section */}
+      {/* Inventory-based Paper Selection */}
+      {selectedParty && paperSource === "inventory" && (
+        <Card className="border-green-200 bg-green-50">
+          <CardHeader>
+            <CardTitle className="text-green-900 flex items-center gap-2">
+              <Package className="w-5 h-5" />
+              Available Inventory
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {availableInventoryItems.length > 0 ? (
+              <div className="space-y-3">
+                {availableInventoryItems.map((item) => (
+                  <div
+                    key={item.id}
+                    className={`p-3 border rounded-lg cursor-pointer transition-colors ${
+                      selectedInventoryItem?.id === item.id
+                        ? "border-green-500 bg-green-100"
+                        : "border-green-200 hover:border-green-300 bg-white"
+                    }`}
+                    onClick={() => {
+                      setSelectedInventoryItem(item);
+                      updateFormData(
+                        "paper_type_id",
+                        item.paper_type_id || null
+                      );
+                      updateFormData("gsm", item.gsm || null);
+                    }}
+                  >
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <h4 className="font-medium text-green-900">
+                          {item.paper_type_name}
+                        </h4>
+                        <p className="text-sm text-green-700">{item.gsm} GSM</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-medium text-green-900">
+                          {item.available_quantity.toLocaleString()} sheets
+                        </p>
+                        <p className="text-xs text-green-600">Available</p>
+                      </div>
+                    </div>
+                    {item.reserved_quantity > 0 && (
+                      <p className="text-xs text-orange-600 mt-1">
+                        {item.reserved_quantity.toLocaleString()} sheets
+                        reserved
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-6">
+                <Package className="w-12 h-12 mx-auto text-gray-400 mb-3" />
+                <p className="text-gray-600 mb-2">
+                  No inventory available for this party
+                </p>
+                <p className="text-sm text-gray-500">
+                  Switch to "Self-Provided Paper" or add inventory first
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mt-3"
+                  onClick={() => window.open("/inventory", "_blank")}
+                >
+                  <ExternalLink className="w-4 h-4 mr-2" />
+                  Manage Inventory
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Traditional Paper Selection (for self-provided or when no party selected) */}
+      {(!selectedParty || paperSource === "self-provided") && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="space-y-2">
+            <Label htmlFor="paper_type">Paper Type</Label>
+            <Select
+              value={formData.paper_type_id?.toString() || ""}
+              onValueChange={(value) => {
+                if (value === "new") {
+                  setShowNewPaperTypeDialog(true);
+                } else {
+                  updateFormData("paper_type_id", parseInt(value));
+                  // Show stock availability info
+                  const paperTypeId = parseInt(value);
+                  const availableStock = getTotalAvailableStock(
+                    paperTypeId,
+                    formData.gsm || undefined
+                  );
+                  if (availableStock > 0 && paperSource === "self-provided") {
+                    // Show suggestion to use inventory instead
+                    console.log(
+                      `Note: ${availableStock} sheets available in inventory for this paper type`
+                    );
+                  }
+                }
+              }}
+            >
+              <SelectTrigger id="paper_type">
+                <SelectValue placeholder="Select paper type" />
+              </SelectTrigger>
+              <SelectContent>
+                {paperTypes.map((type) => {
+                  const availableStock = getTotalAvailableStock(
+                    type.id,
+                    formData.gsm || undefined
+                  );
+                  return (
+                    <SelectItem key={type.id} value={type.id.toString()}>
+                      <div className="flex items-center justify-between w-full">
+                        <span>{type.name}</span>
+                        {selectedParty && availableStock > 0 && (
+                          <Badge
+                            variant="outline"
+                            className="ml-2 text-xs text-green-600"
+                          >
+                            {availableStock} in stock
+                          </Badge>
+                        )}
+                      </div>
+                    </SelectItem>
+                  );
+                })}
+                <SelectItem value="new">
+                  <div className="flex items-center gap-2 text-blue-600">
+                    <Plus className="w-4 h-4" />
+                    Add New Paper Type
+                  </div>
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="gsm">GSM</Label>
+            <Select
+              value={formData.gsm?.toString() || ""}
+              onValueChange={(value) => {
+                updateFormData("gsm", parseInt(value));
+                // Show stock availability when both paper type and GSM are selected
+                if (formData.paper_type_id && selectedParty) {
+                  const availableStock = getTotalAvailableStock(
+                    formData.paper_type_id,
+                    parseInt(value)
+                  );
+                  if (availableStock > 0 && paperSource === "self-provided") {
+                    console.log(
+                      `Note: ${availableStock} sheets available in inventory for this combination`
+                    );
+                  }
+                }
+              }}
+            >
+              <SelectTrigger id="gsm">
+                <SelectValue placeholder="Select GSM" />
+              </SelectTrigger>
+              <SelectContent>
+                {paperGSMs.map((gsm) => {
+                  const availableStock = formData.paper_type_id
+                    ? getTotalAvailableStock(formData.paper_type_id, gsm)
+                    : 0;
+                  return (
+                    <SelectItem key={gsm} value={gsm.toString()}>
+                      <div className="flex items-center justify-between w-full">
+                        <span>{gsm} GSM</span>
+                        {selectedParty && availableStock > 0 && (
+                          <Badge
+                            variant="outline"
+                            className="ml-2 text-xs text-green-600"
+                          >
+                            {availableStock} sheets
+                          </Badge>
+                        )}
+                      </div>
+                    </SelectItem>
+                  );
+                })}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      )}
+
+      {/* Stock availability warning for self-provided paper */}
+      {selectedParty &&
+        paperSource === "self-provided" &&
+        formData.paper_type_id &&
+        formData.gsm &&
+        (() => {
+          const availableStock = getTotalAvailableStock(
+            formData.paper_type_id,
+            formData.gsm
+          );
+          return availableStock > 0 ? (
+            <Card className="border-yellow-200 bg-yellow-50">
+              <CardContent className="pt-4">
+                <div className="flex items-center gap-2 text-yellow-800">
+                  <AlertCircle className="w-4 h-4" />
+                  <span className="text-sm">
+                    <strong>Note:</strong> {availableStock.toLocaleString()}{" "}
+                    sheets of this paper type are available in inventory.
+                    Consider switching to "Use from Inventory" to track stock
+                    usage.
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
+          ) : null;
+        })()}
+
+      {/* Machine Assignment */}
+      <Card className="border-purple-200 bg-purple-50">
+        <CardHeader>
+          <CardTitle className="text-purple-900 flex items-center gap-2">
+            <Cog className="w-5 h-5" />
+            Machine Assignment (Optional)
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center space-x-2">
+            <input
+              type="checkbox"
+              id="assign_to_machine"
+              checked={assignToMachine}
+              onChange={(e) => {
+                const checked = e.target.checked;
+                setAssignToMachine(checked);
+                updateFormData("assign_to_machine", checked);
+                if (!checked) {
+                  setSelectedMachine(null);
+                  updateFormData("machine_id", null);
+                }
+              }}
+              className="rounded"
+            />
+            <Label htmlFor="assign_to_machine">
+              Assign this job to a specific machine
+            </Label>
+          </div>
+
+          {assignToMachine && (
+            <div className="space-y-4">
+              {availableMachines.length > 0 ? (
+                <div className="grid grid-cols-1 gap-3">
+                  {availableMachines.map((machine) => (
+                    <div
+                      key={machine.id}
+                      className={`p-4 border rounded-lg cursor-pointer transition-colors ${
+                        selectedMachine?.id === machine.id
+                          ? "border-purple-500 bg-purple-100"
+                          : "border-purple-200 hover:border-purple-300 bg-white"
+                      }`}
+                      onClick={() => {
+                        setSelectedMachine(machine);
+                        updateFormData("machine_id", machine.id);
+                      }}
+                    >
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <h4 className="font-medium text-purple-900">
+                            {machine.name}
+                          </h4>
+                          <p className="text-sm text-purple-700">
+                            {machine.type} • {machine.color_capacity} Colors
+                          </p>
+                          {machine.operator_name && (
+                            <p className="text-sm text-purple-600">
+                              Operator: {machine.operator_name}
+                            </p>
+                          )}
+                        </div>
+                        <div className="text-right">
+                          <Badge className="bg-green-100 text-green-800 border-green-200">
+                            Available
+                          </Badge>
+                          {machine.max_sheet_size && (
+                            <p className="text-xs text-purple-600 mt-1">
+                              Max: {machine.max_sheet_size}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-6">
+                  <Cog className="w-12 h-12 mx-auto text-gray-400 mb-3" />
+                  <p className="text-gray-600 mb-2">
+                    No machines available for assignment
+                  </p>
+                  <p className="text-sm text-gray-500">
+                    All machines are either busy or offline
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-3"
+                    onClick={() => window.open("/machines", "_blank")}
+                  >
+                    <ExternalLink className="w-4 h-4 mr-2" />
+                    Manage Machines
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Paper Configuration */}
       <Card className="border-dashed">
         <CardHeader>
           <CardTitle className="text-lg flex items-center gap-2">
@@ -847,7 +1412,7 @@ export default function JobSheetForm() {
           {paperProvidedByParty && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
               <div className="space-y-2">
-                <Label>Paper Type</Label>
+                <Label htmlFor="paper_type_custom">Paper Type</Label>
                 <Select
                   value={paperType}
                   onValueChange={(value) => {
@@ -858,7 +1423,7 @@ export default function JobSheetForm() {
                     }
                   }}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger id="paper_type_custom">
                     <SelectValue placeholder="Select paper type" />
                   </SelectTrigger>
                   <SelectContent>
@@ -892,14 +1457,16 @@ export default function JobSheetForm() {
                     {paperTypes.length > 0 && (
                       <>
                         <div className="px-2 py-1 text-xs text-gray-500 font-medium uppercase tracking-wider border-t mt-1 pt-2">
-                          Custom Types
+                          Database Types
                         </div>
                         {paperTypes.map((type) => (
-                          <SelectItem
-                            key={`custom-${type.id}`}
-                            value={type.name}
-                          >
+                          <SelectItem key={type.id} value={type.name}>
                             {type.name}
+                            {type.gsm && (
+                              <span className="text-xs text-gray-500 ml-1">
+                                (Default: {type.gsm} GSM)
+                              </span>
+                            )}
                           </SelectItem>
                         ))}
                       </>
@@ -916,18 +1483,10 @@ export default function JobSheetForm() {
                     </div>
                   </SelectContent>
                 </Select>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setShowNewPaperTypeDialog(true)}
-                  className="h-7 px-2 text-xs w-full"
-                >
-                  <Plus className="w-3 h-3 mr-1" />
-                  Add Paper Type
-                </Button>
               </div>
+
               <div className="space-y-2">
-                <Label>Paper Size</Label>
+                <Label htmlFor="paper_size_custom">Paper Size</Label>
                 <Select
                   value={paperSize}
                   onValueChange={(value) => {
@@ -938,7 +1497,7 @@ export default function JobSheetForm() {
                     }
                   }}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger id="paper_size_custom">
                     <SelectValue placeholder="Select paper size" />
                   </SelectTrigger>
                   <SelectContent>
@@ -988,9 +1547,9 @@ export default function JobSheetForm() {
                 </Button>
               </div>
               <div className="space-y-2">
-                <Label>Paper GSM</Label>
+                <Label htmlFor="paper_gsm_custom">Paper GSM</Label>
                 <Select value={paperGSM} onValueChange={setPaperGSM}>
-                  <SelectTrigger>
+                  <SelectTrigger id="paper_gsm_custom">
                     <SelectValue placeholder="Select GSM" />
                   </SelectTrigger>
                   <SelectContent>
@@ -1309,6 +1868,128 @@ export default function JobSheetForm() {
                 </div>
               </div>
             </div>
+
+            {/* Paper Information Section */}
+            <div>
+              <h4 className="font-semibold mb-3 text-gray-700">
+                Paper Information
+              </h4>
+              <div className="space-y-2 text-sm">
+                {selectedParty &&
+                paperSource === "inventory" &&
+                selectedInventoryItem ? (
+                  <Card className="border-green-200 bg-green-50">
+                    <CardContent className="pt-4">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Warehouse className="w-4 h-4 text-green-600" />
+                        <span className="font-medium text-green-800">
+                          Using from Inventory
+                        </span>
+                      </div>
+                      <div className="space-y-1 text-sm">
+                        <div>
+                          <span className="font-medium">Paper Type:</span>{" "}
+                          {selectedInventoryItem.paper_type_name}
+                        </div>
+                        <div>
+                          <span className="font-medium">GSM:</span>{" "}
+                          {selectedInventoryItem.gsm}
+                        </div>
+                        <div>
+                          <span className="font-medium">Available Stock:</span>{" "}
+                          {selectedInventoryItem.available_quantity.toLocaleString()}{" "}
+                          sheets
+                        </div>
+                        <div>
+                          <span className="font-medium">Usage:</span>{" "}
+                          {formData.paper_sheet || "0"} sheets will be deducted
+                          from inventory
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <Card className="border-blue-200 bg-blue-50">
+                    <CardContent className="pt-4">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Package className="w-4 h-4 text-blue-600" />
+                        <span className="font-medium text-blue-800">
+                          Self-Provided Paper
+                        </span>
+                      </div>
+                      <div className="space-y-1 text-sm">
+                        <div>
+                          <span className="font-medium">Paper Type:</span>{" "}
+                          {(() => {
+                            const paperType = paperTypes.find(
+                              (p) => p.id === formData.paper_type_id
+                            );
+                            return paperType?.name || "Not specified";
+                          })()}
+                        </div>
+                        <div>
+                          <span className="font-medium">GSM:</span>{" "}
+                          {formData.gsm || "Not specified"}
+                        </div>
+                        <div>
+                          <span className="font-medium">Quantity:</span>{" "}
+                          {formData.paper_sheet || "0"} sheets (self-provided)
+                        </div>
+                        {selectedParty &&
+                          formData.paper_type_id &&
+                          formData.gsm &&
+                          (() => {
+                            const availableStock = getTotalAvailableStock(
+                              formData.paper_type_id,
+                              formData.gsm
+                            );
+                            return availableStock > 0 ? (
+                              <div className="text-xs text-yellow-700 bg-yellow-100 p-2 rounded mt-2">
+                                <AlertCircle className="w-3 h-3 inline mr-1" />
+                                Note: {availableStock.toLocaleString()} sheets
+                                of this paper are available in inventory
+                              </div>
+                            ) : null;
+                          })()}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {paperProvidedByParty && (
+                  <Card className="border-orange-200 bg-orange-50">
+                    <CardContent className="pt-4">
+                      <div className="flex items-center gap-2 mb-2">
+                        <User className="w-4 h-4 text-orange-600" />
+                        <span className="font-medium text-orange-800">
+                          Additional Paper Provided by Party
+                        </span>
+                      </div>
+                      <div className="space-y-1 text-sm">
+                        {paperType && (
+                          <div>
+                            <span className="font-medium">Type:</span>{" "}
+                            {paperType}
+                          </div>
+                        )}
+                        {paperSize && (
+                          <div>
+                            <span className="font-medium">Size:</span>{" "}
+                            {paperSize}
+                          </div>
+                        )}
+                        {paperGSM && (
+                          <div>
+                            <span className="font-medium">GSM:</span> {paperGSM}
+                          </div>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
+            </div>
+
             <div>
               <h4 className="font-semibold mb-3 text-gray-700">
                 Cost Breakdown
@@ -1435,6 +2116,39 @@ export default function JobSheetForm() {
   if (isLoading) {
     return <Loading message="Loading Job Sheet Form..." size="lg" fullScreen />;
   }
+
+  // Error notification component
+  const renderErrorNotifications = () => {
+    const errors = Object.entries(errorStates).filter(
+      ([_, error]) => error !== null
+    );
+
+    if (errors.length === 0) return null;
+
+    return (
+      <div className="mb-4 space-y-2">
+        {errors.map(([key, error]) => (
+          <div
+            key={key}
+            className="flex items-center gap-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg"
+          >
+            <AlertCircle className="h-4 w-4 text-yellow-600 flex-shrink-0" />
+            <span className="text-sm text-yellow-800">{error}</span>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="ml-auto h-6 w-6 p-0 text-yellow-600 hover:text-yellow-800"
+              onClick={() =>
+                setErrorStates((prev) => ({ ...prev, [key]: null }))
+              }
+            >
+              ×
+            </Button>
+          </div>
+        ))}
+      </div>
+    );
+  };
 
   return (
     <div className="space-y-8">
@@ -1683,6 +2397,9 @@ export default function JobSheetForm() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Error Notifications */}
+      {renderErrorNotifications()}
     </div>
   );
 }

@@ -16,26 +16,26 @@ END $$;
 -- Insert base paper types (without GSM in name, GSM handled separately like in job sheet form)
 INSERT INTO public.paper_types (name, gsm) 
 SELECT name, gsm FROM (VALUES 
-    ('ART PAPER', NULL),
-    ('MATTE PAPER', NULL),
-    ('GLOSSY PAPER', NULL),
-    ('CARDSTOCK', NULL),
-    ('PHOTO PAPER', NULL),
-    ('OFFSET PAPER', NULL),
-    ('NEWSPRINT', NULL),
-    ('BOND PAPER', NULL),
-    ('COPIER PAPER', NULL),
-    ('FRC', NULL),
-    ('DUPLEX', NULL),
-    ('SBS', NULL),
-    ('MAIFLITO', NULL),
-    ('GUMMING', NULL),
-    ('PREMIUM ART', NULL),
-    ('MATTE FINISH', NULL),
-    ('HIGH GLOSS', NULL),
-    ('RECYCLED', NULL),
-    ('COATED', NULL),
-    ('UNCOATED', NULL)
+    ('ART PAPER', NULL::INTEGER),
+    ('MATTE PAPER', NULL::INTEGER),
+    ('GLOSSY PAPER', NULL::INTEGER),
+    ('CARDSTOCK', NULL::INTEGER),
+    ('PHOTO PAPER', NULL::INTEGER),
+    ('OFFSET PAPER', NULL::INTEGER),
+    ('NEWSPRINT', NULL::INTEGER),
+    ('BOND PAPER', NULL::INTEGER),
+    ('COPIER PAPER', NULL::INTEGER),
+    ('FRC', NULL::INTEGER),
+    ('DUPLEX', NULL::INTEGER),
+    ('SBS', NULL::INTEGER),
+    ('MAIFLITO', NULL::INTEGER),
+    ('GUMMING', NULL::INTEGER),
+    ('PREMIUM ART', NULL::INTEGER),
+    ('MATTE FINISH', NULL::INTEGER),
+    ('HIGH GLOSS', NULL::INTEGER),
+    ('RECYCLED', NULL::INTEGER),
+    ('COATED', NULL::INTEGER),
+    ('UNCOATED', NULL::INTEGER)
 ) AS new_types(name, gsm)
 WHERE NOT EXISTS (
     SELECT 1 FROM public.paper_types pt WHERE pt.name = new_types.name

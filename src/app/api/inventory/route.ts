@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { createClient } from "../../../../supabase/server";
 
+// Force dynamic rendering for this route
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   try {
     const supabase = await createClient();
@@ -61,6 +64,7 @@ export async function POST(request: Request) {
     const {
       party_id,
       paper_type_id,
+      gsm,
       transaction_type = "in",
       quantity,
       unit_type,
@@ -81,12 +85,13 @@ export async function POST(request: Request) {
       .eq("id", paper_type_id)
       .single();
 
-    // Check if inventory item exists, if not create it
+    // Check if inventory item exists, if not create it (including GSM)
     let { data: inventoryItem } = await supabase
       .from("inventory_items")
       .select("id")
       .eq("party_id", party_id)
       .eq("paper_type_id", paper_type_id)
+      .eq("gsm", gsm)
       .single();
 
     if (!inventoryItem) {
@@ -96,6 +101,7 @@ export async function POST(request: Request) {
         .insert({
           party_id,
           paper_type_id,
+          gsm,
           paper_type_name: paperType?.name || "Unknown",
           current_quantity: 0,
         })
@@ -132,6 +138,7 @@ export async function POST(request: Request) {
         inventory_item_id: inventoryItem.id,
         party_id,
         paper_type_id,
+        gsm,
         transaction_type,
         quantity: Math.abs(quantity),
         unit_type,
@@ -161,6 +168,128 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     console.error("POST error:", error);
+    return NextResponse.json(
+      {
+        success: false,
+        error: "Internal server error",
+      },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(request: Request) {
+  try {
+    const supabase = await createClient();
+    const url = new URL(request.url);
+    const itemId = url.searchParams.get("id");
+    const deleteType = url.searchParams.get("type") || "item"; // 'item' or 'transaction'
+
+    if (!itemId) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Item ID is required",
+        },
+        { status: 400 }
+      );
+    }
+
+    if (deleteType === "transaction") {
+      // Use soft delete for transactions instead of hard delete
+      const { data: existingTransaction, error: fetchError } = await supabase
+        .from("inventory_transactions")
+        .select("id, is_deleted, inventory_item_id")
+        .eq("id", itemId)
+        .single();
+
+      if (fetchError || !existingTransaction) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Transaction not found",
+          },
+          { status: 404 }
+        );
+      }
+
+      if (existingTransaction.is_deleted) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Transaction is already deleted",
+          },
+          { status: 400 }
+        );
+      }
+
+      // Soft delete the transaction
+      const { error: softDeleteError } = await supabase
+        .from("inventory_transactions")
+        .update({
+          is_deleted: true,
+          deleted_at: new Date().toISOString(),
+          deletion_reason: "Deleted via inventory management",
+          deleted_by: "Admin",
+        })
+        .eq("id", itemId);
+
+      if (softDeleteError) {
+        console.error("Error soft deleting transaction:", softDeleteError);
+        return NextResponse.json(
+          {
+            success: false,
+            error: softDeleteError.message,
+          },
+          { status: 500 }
+        );
+      }
+
+      // Update inventory balances after soft delete
+      if (existingTransaction.inventory_item_id) {
+        const { error: balanceError } = await supabase.rpc(
+          "update_inventory_balance",
+          {
+            inventory_item_id_param: existingTransaction.inventory_item_id,
+          }
+        );
+
+        if (balanceError) {
+          console.error("Error updating inventory balance:", balanceError);
+          // Don't fail the request, transaction is already marked as deleted
+        }
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: "Transaction deleted successfully",
+      });
+    } else {
+      // Delete inventory item and all its transactions
+      const { error: deleteError } = await supabase
+        .from("inventory_items")
+        .delete()
+        .eq("id", itemId);
+
+      if (deleteError) {
+        console.error("Error deleting inventory item:", deleteError);
+        return NextResponse.json(
+          {
+            success: false,
+            error: deleteError.message,
+          },
+          { status: 500 }
+        );
+      }
+
+      return NextResponse.json({
+        success: true,
+        message:
+          "Inventory item and all related transactions deleted successfully",
+      });
+    }
+  } catch (error) {
+    console.error("DELETE error:", error);
     return NextResponse.json(
       {
         success: false,

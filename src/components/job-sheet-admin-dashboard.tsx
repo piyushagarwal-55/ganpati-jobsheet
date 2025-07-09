@@ -419,15 +419,7 @@ export default function JobSheetAdminDashboard() {
   };
 
   // Filter job sheets based on search term
-  const filteredJobSheets = jobSheets.filter((sheet) => {
-    if (!searchTerm) return true;
-    const searchLower = searchTerm.toLowerCase();
-    return (
-      sheet.party_name?.toLowerCase().includes(searchLower) ||
-      sheet.description?.toLowerCase().includes(searchLower) ||
-      sheet.job_type?.toLowerCase().includes(searchLower)
-    );
-  });
+  
 
   // Recent job sheets for the second tab
   const recentJobSheets = jobSheets
@@ -440,13 +432,49 @@ export default function JobSheetAdminDashboard() {
     .slice(0, 10);
 
   // Show loading state
-  if (loading) {
+  
+const [advancedFilters, setAdvancedFilters] = useState({
+  sizeMin: "",
+  sizeMax: "",
+  gsmMin: "",
+  gsmMax: "",
+  jobType: "all",
+  impressionsMin: "",
+  impressionsMax: "",
+  totalCostMin: "",
+  totalCostMax: "",
+  balanceMin: "",
+  balanceMax: "",
+  showOnlyWithBalance: false,
+});
+
+const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  // Show error state
+  const clearAllFilters = () => {
+  setSearchTerm("");
+  setDateFilter("all");
+  setPartyFilter("all");
+  setAdvancedFilters({
+    sizeMin: "",
+    sizeMax: "",
+    gsmMin: "",
+    gsmMax: "",
+    jobType: "all",
+    impressionsMin: "",
+    impressionsMax: "",
+    totalCostMin: "",
+    totalCostMax: "",
+    balanceMin: "",
+    balanceMax: "",
+    showOnlyWithBalance: false,
+  });
+  setShowAdvancedFilters(false);
+};
+if (loading) {
     return (
       <Loading message="Loading Reports Dashboard..." size="lg" fullScreen />
     );
   }
-
-  // Show error state
   if (error) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -630,33 +658,7 @@ export default function JobSheetAdminDashboard() {
           </Card>
         </div>
 
-        {/* Search Bar - Matching parties page */}
-        <Card className="mb-8">
-          <CardContent className="p-6">
-            <div className="flex items-center gap-4">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <Input
-                  placeholder="Search job sheets by party name, description, or job type..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10 h-12 text-lg border-gray-200 focus:border-blue-500"
-                />
-              </div>
-              <Button
-                onClick={() => {
-                  // Advanced filters functionality would go here
-                  console.log("Advanced filters triggered");
-                }}
-                className="h-12 px-6 bg-blue-600 hover:bg-blue-700"
-              >
-                <Calendar className="w-4 h-4 mr-2" />
-                Filter by Date
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-
+      
         {/* Main Content Tabs - Matching parties page */}
         <Tabs
           value={activeTab}
@@ -664,22 +666,21 @@ export default function JobSheetAdminDashboard() {
           className="space-y-6"
         >
           <TabsList className="grid w-full grid-cols-2 h-12">
-            <TabsTrigger
-              value="overview"
-              className="flex items-center gap-2 h-10"
-            >
-              <BarChart3 className="w-4 h-4" />
-              Analytics Overview ({filteredJobSheets.length})
-            </TabsTrigger>
-            <TabsTrigger
-              value="reports"
-              className="flex items-center gap-2 h-10"
-            >
-              <FileText className="w-4 h-4" />
-              Recent Job Sheets ({recentJobSheets.length})
-            </TabsTrigger>
-          </TabsList>
-
+  <TabsTrigger
+    value="overview"
+    className="flex items-center gap-2 h-10"
+  >
+    <BarChart3 className="w-4 h-4" />
+    Analytics Overview ({jobSheets.length})
+  </TabsTrigger>
+  <TabsTrigger
+    value="reports"
+    className="flex items-center gap-2 h-10"
+  >
+    <FileText className="w-4 h-4" />
+    Job Sheets Management ({jobSheets.length})
+  </TabsTrigger>
+</TabsList>
           {/* Analytics Overview Tab */}
           <TabsContent value="overview">
             <Card className="shadow-lg">
@@ -706,23 +707,29 @@ export default function JobSheetAdminDashboard() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <JobSheetsTable
-                  jobSheets={filteredJobSheets}
-                  notes={notes}
-                  searchTerm=""
-                  dateFilter={dateFilter}
-                  setDateFilter={setDateFilter}
-                  partyFilter={partyFilter}
-                  setPartyFilter={setPartyFilter}
-                  parties={parties}
-                  updateJobSheet={updateJobSheet}
-                  deleteJobSheet={deleteJobSheet}
-                  addNote={addNote}
-                  generateReport={generateReport}
-                  setSelectedJobSheet={setSelectedJobSheet}
-                  onRefresh={handleRefresh}
-                  softDeleteJobSheet={softDeleteJobSheet}
-                />
+<JobSheetsTable
+  jobSheets={jobSheets} // Pass all job sheets, let the component handle filtering
+  notes={notes}
+  searchTerm={searchTerm}
+  setSearchTerm={setSearchTerm}
+  dateFilter={dateFilter}
+  setDateFilter={setDateFilter}
+  partyFilter={partyFilter}
+  setPartyFilter={setPartyFilter}
+  advancedFilters={advancedFilters}
+  setAdvancedFilters={setAdvancedFilters}
+  showAdvancedFilters={showAdvancedFilters}
+  setShowAdvancedFilters={setShowAdvancedFilters}
+  parties={parties}
+  updateJobSheet={updateJobSheet}
+  deleteJobSheet={deleteJobSheet}
+  addNote={addNote}
+  generateReport={generateReport}
+  setSelectedJobSheet={setSelectedJobSheet}
+  onRefresh={handleRefresh}
+  softDeleteJobSheet={softDeleteJobSheet}
+  clearAllFilters={clearAllFilters}
+/>
               </CardContent>
             </Card>
           </TabsContent>
