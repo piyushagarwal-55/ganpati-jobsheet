@@ -1,10 +1,9 @@
 import { createClient } from "@supabase/supabase-js";
 import {
   createBrowserClient,
-  createServerClient,
+  createServerClient as createSupabaseServerClient,
   type CookieOptions,
 } from "@supabase/ssr";
-import { cookies } from "next/headers";
 
 // Supabase configuration
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -15,11 +14,12 @@ export const createClientBrowser = () => {
   return createBrowserClient(supabaseUrl, supabaseAnonKey);
 };
 
-// Server client for server-side operations
-export const createServerClient = async () => {
+// Server client for server-side operations (only use in server components)
+export const createServerClient = () => {
+  const { cookies } = require("next/headers");
   const cookieStore = cookies();
 
-  return createServerClient(supabaseUrl, supabaseAnonKey, {
+  return createSupabaseServerClient(supabaseUrl, supabaseAnonKey, {
     cookies: {
       get(name: string) {
         return cookieStore.get(name)?.value;
@@ -46,8 +46,11 @@ export const createServerClient = async () => {
   });
 };
 
-// Simple client for basic operations (backwards compatibility)
+// Simple client for basic operations (works everywhere)
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+// Auth-specific client for browser use
+export const supabaseBrowser = createClientBrowser();
 
 // Database types for the operator dashboard
 export interface JobSheet {

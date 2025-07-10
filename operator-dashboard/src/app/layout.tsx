@@ -3,11 +3,12 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/toaster";
+import { AuthProvider } from "@/components/auth/auth-provider";
 
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Ganpati Overseas - Operator Dashboard",
+  title: "Operator System | Ganpathi Overseas",
   description:
     "Real-time operator dashboard for machine job management and notifications",
   keywords: [
@@ -18,10 +19,14 @@ export const metadata: Metadata = {
     "ganpati-overseas",
   ],
   authors: [{ name: "Ganpati Overseas" }],
-  viewport: "width=device-width, initial-scale=1",
   icons: {
     icon: "/favicon.ico",
   },
+};
+
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
 };
 
 export default function RootLayout({
@@ -34,12 +39,16 @@ export default function RootLayout({
       <body className={inter.className}>
         <ThemeProvider
           attribute="class"
-          defaultTheme="system"
+          defaultTheme="light"
           enableSystem
           disableTransitionOnChange
         >
-          <div className="relative min-h-screen bg-background">{children}</div>
-          <Toaster />
+          <AuthProvider>
+            <div className="relative min-h-screen bg-background">
+              {children}
+            </div>
+            <Toaster />
+          </AuthProvider>
         </ThemeProvider>
       </body>
     </html>

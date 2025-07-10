@@ -39,7 +39,6 @@ export async function GET(request: NextRequest) {
       `
       )
       .eq("machine_id", machineId)
-      .eq("deleted_at", null)
       .order("created_at", { ascending: false })
       .limit(limit);
 

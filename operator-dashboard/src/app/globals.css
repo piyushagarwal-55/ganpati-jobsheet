@@ -56,6 +56,25 @@
   body {
     @apply bg-background text-foreground;
   }
+
+  /* Light theme modern background */
+  body {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background-attachment: fixed;
+    min-height: 100vh;
+  }
+
+  /* Dark theme background */
+  .dark body {
+    background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+    background-attachment: fixed;
+    min-height: 100vh;
+  }
+
+  /* Override with solid background for components that need it */
+  .solid-bg {
+    background: hsl(var(--background)) !important;
+  }
 }
 
 /* Custom styles for operator dashboard */
@@ -190,5 +209,90 @@
 
   .machine-maintenance {
     @apply text-yellow-600 dark:text-yellow-400;
+  }
+
+  /* Glass morphism effects for modern UI */
+  .glass-card {
+    @apply backdrop-blur-sm bg-white/80 dark:bg-slate-800/80 border-0 shadow-xl;
+  }
+
+  .glass-header {
+    @apply backdrop-blur-sm bg-white/80 dark:bg-slate-800/80 border-slate-200 dark:border-slate-700;
+  }
+
+  /* Enhanced hover effects */
+  .card-hover {
+    @apply transition-all duration-200 hover:shadow-xl hover:scale-[1.02];
+  }
+
+  /* Status indicator with glow effects */
+  .status-glow-green {
+    @apply shadow-green-500/50 shadow-lg;
+  }
+
+  .status-glow-yellow {
+    @apply shadow-yellow-500/50 shadow-lg;
+  }
+
+  .status-glow-red {
+    @apply shadow-red-500/50 shadow-lg;
+  }
+
+  /* Gradient text */
+  .gradient-text {
+    @apply bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent;
+  }
+
+  /* Pulse animation for notifications */
+  .pulse-glow {
+    animation: pulse-glow 2s infinite;
+  }
+
+  @keyframes pulse-glow {
+    0%,
+    100% {
+      opacity: 1;
+      box-shadow: 0 0 5px currentColor;
+    }
+    50% {
+      opacity: 0.7;
+      box-shadow: 0 0 20px currentColor;
+    }
+  }
+
+  /* Custom scrollbar */
+  .custom-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(156, 163, 175, 0.5) transparent;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background-color: rgba(156, 163, 175, 0.5);
+    border-radius: 10px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(156, 163, 175, 0.8);
+  }
+
+  /* Modern button styles */
+  .btn-gradient {
+    @apply bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-medium;
+  }
+
+  .btn-gradient-green {
+    @apply bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-medium;
+  }
+
+  .btn-gradient-blue {
+    @apply bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-medium;
   }
 }

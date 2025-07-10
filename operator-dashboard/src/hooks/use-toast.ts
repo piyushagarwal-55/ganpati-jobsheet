@@ -1,9 +1,11 @@
+import * as React from "react";
 import { useState, useCallback } from "react";
 
 export interface Toast {
   id: string;
   title?: string;
   description?: string;
+  action?: React.ReactElement;
   variant?: "default" | "destructive";
   className?: string;
 }
@@ -80,6 +82,3 @@ export function useToast() {
     toasts: toastList,
   };
 }
-
-// Add React import for useEffect
-import * as React from "react";
