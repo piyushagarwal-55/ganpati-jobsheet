@@ -30,7 +30,7 @@ import {
   ArrowRight,
   ArrowLeft,
   Send,
-  UserPlus,
+  AlertTriangle,
   Plus,
   Warehouse,
   ExternalLink,
